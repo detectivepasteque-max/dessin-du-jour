@@ -38,7 +38,9 @@
     "mesure-etat", "mesure-liste",
     "question", "question-formulaire", "question-texte", "btn-question",
     "btn-question-stop", "question-etat", "question-reponse", "question-reponse-texte",
-    "sync-etat", "sauvegarde-locale", "sauvegarde-compte", "reglages-claude"
+    "sync-etat", "sauvegarde-locale", "sauvegarde-compte", "reglages-claude",
+    "reglages-claude-source", "reglages-cle", "cle-etat", "cle-formulaire", "cle-api",
+    "cle-modele", "btn-cle-tester", "btn-cle-retirer", "cle-message"
   ];
 
   var el = {};
@@ -49,6 +51,7 @@
     demander: null,              /* la fonction sample, ou null si Claude n’est pas joignable ici */
     photo: false,                /* vrai si cette vue peut envoyer une image */
     coupe: false,                /* vrai après un refus définitif : plus rien n’est proposé pendant la visite */
+    parCle: false,               /* vrai quand les demandes passent par la clé API (api.js), pas par le compte Claude */
     enCours: {}                  /* AbortController de chaque demande en route, par nom */
   };
   var ideesProposees = [];       /* idées sur mesure affichées */
@@ -437,24 +440,190 @@
     if (code === "images_unavailable") {
       ia.photo = false;
       apresRendu();
-      message = "Cette vue ne peut pas envoyer de photo à Claude.";
-    } else if (code === "rate_limited") {
-      message = "Claude est très demandé, ou ta limite d’usage est atteinte. Réessaie un peu plus tard.";
-    } else if (code === "session_expired") {
-      message = "Ta session Claude a expiré : reconnecte-toi, puis réessaie.";
-    } else if (code === "image_rejected") {
-      message = "Cette image n’a pas pu être lue. Essaie une photo JPEG ou PNG, plus légère.";
-    } else if (code === "refused") {
-      message = "Claude n’a pas pu répondre à cette demande. Essaie de la formuler autrement.";
-    } else if (code === "invalid_json" || code === "empty_completion") {
-      message = "La réponse de Claude n’était pas exploitable. Tu peux réessayer.";
-    } else if (code === "prompt_too_large") {
-      message = "La demande est trop longue pour Claude. Essaie avec un texte plus court.";
-    } else {
-      message = "Claude n’a pas répondu. Tu peux réessayer dans un instant.";
     }
+    message = messageErreur(code);
     dire(zone, message, true);
     return true;
+  }
+
+  /* Un échec dit en mots simples, d’après son code. */
+  function messageErreur(code) {
+    if (code === "images_unavailable") {
+      return "Cette vue ne peut pas envoyer de photo à Claude.";
+    }
+    if (code === "rate_limited") {
+      return "Claude est très demandé, ou ta limite d’usage est atteinte. Réessaie un peu plus tard.";
+    }
+    if (code === "session_expired") {
+      return "Ta session Claude a expiré : reconnecte-toi, puis réessaie.";
+    }
+    if (code === "image_rejected") {
+      return "Cette image n’a pas pu être lue. Essaie une photo JPEG ou PNG, plus légère.";
+    }
+    if (code === "refused") {
+      return "Claude n’a pas pu répondre à cette demande. Essaie de la formuler autrement.";
+    }
+    if (code === "invalid_json" || code === "empty_completion") {
+      return "La réponse de Claude n’était pas exploitable. Tu peux réessayer.";
+    }
+    if (code === "prompt_too_large") {
+      return "La demande est trop longue pour Claude. Essaie avec un texte plus court.";
+    }
+    /* Avec une clé API (api.js) */
+    if (code === "cle_refusee") {
+      return "Anthropic refuse cette clé API. Vérifie-la dans Réglages : elle a peut-être été révoquée ou mal copiée.";
+    }
+    if (code === "credit_insuffisant") {
+      return "Le crédit de ton compte API est épuisé ou absent. Ajoute du crédit dans la console d’Anthropic, puis réessaie.";
+    }
+    if (code === "acces_refuse") {
+      return "Cette clé API n’a pas le droit de faire cette demande. Vérifie ses droits dans la console d’Anthropic.";
+    }
+    if (code === "modele_introuvable") {
+      return "Ce modèle n’est pas accessible avec ta clé. Choisis-en un autre dans Réglages.";
+    }
+    if (code === "requete_refusee") {
+      return "L’API a refusé la demande telle qu’elle était écrite. Essaie un autre modèle dans Réglages.";
+    }
+    if (code === "reseau") {
+      return "Impossible de joindre l’API d’Anthropic. Vérifie ta connexion, ou un bloqueur qui couperait cet appel.";
+    }
+    return "Claude n’a pas répondu. Tu peux réessayer dans un instant.";
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Clé API (hors artefact) : réglage, et bascule des demandes dessus    */
+  /* ------------------------------------------------------------------ */
+
+  /* Une clé API ne sert que là où la page peut joindre le réseau : pas dans
+     un artefact, où tout appel extérieur est fermé. */
+  function cleAutorisee() {
+    var api = DDJ.api;
+    return !!api && api.possible() && !(hote !== null && dansUnCadre());
+  }
+
+  /* Fait passer les demandes par la clé enregistrée, s’il y en a une et si
+     le compte Claude n’est pas déjà là pour ça. */
+  function activerCle() {
+    var cle;
+    if (!cleAutorisee() || (ia.demander !== null && !ia.parCle)) {
+      apresRendu();
+      return;
+    }
+    cle = DDJ.api.lireCle();
+    if (cle === "") {
+      ia.demander = null;
+      ia.parCle = false;
+      ia.photo = false;
+    } else {
+      ia.demander = DDJ.api.creerDemandeur(cle, DDJ.api.lireModele());
+      ia.parCle = true;
+      ia.photo = true;
+      ia.coupe = false;
+    }
+    apresRendu();
+  }
+
+  function direCle(message, estErreur) {
+    el.cleMessage.className = estErreur ? "message message-erreur" : "message";
+    texte(el.cleMessage, message);
+  }
+
+  function nomModele(id) {
+    var modeles = DDJ.api.MODELES;
+    var i;
+    for (i = 0; i < modeles.length; i++) {
+      if (modeles[i].id === id) {
+        return modeles[i].nom;
+      }
+    }
+    return id;
+  }
+
+  function rendreCle() {
+    var permis = cleAutorisee();
+    var cle, modeles, i, choix;
+    montrer(el.reglagesCle, permis);
+    if (!permis) {
+      return;
+    }
+    if (el.cleModele.options.length === 0) {
+      modeles = DDJ.api.MODELES;
+      for (i = 0; i < modeles.length; i++) {
+        choix = doc.createElement("option");
+        choix.value = modeles[i].id;
+        choix.textContent = modeles[i].nom + " (" + modeles[i].note + ")";
+        el.cleModele.appendChild(choix);
+      }
+    }
+    if (el.cleModele.value !== DDJ.api.lireModele()) {
+      el.cleModele.value = DDJ.api.lireModele();
+    }
+    cle = DDJ.api.lireCle();
+    /* La clé n’est jamais réaffichée : seuls ses quatre derniers caractères le sont. */
+    texte(el.cleEtat, cle !== "" ? "Clé enregistrée (elle se termine par « " + cle.slice(-4) + " »)" : "Aucune clé enregistrée");
+    el.cleEtat.setAttribute("data-etat", cle !== "" ? "ok" : "local");
+    montrer(el.btnCleTester, cle !== "" && !ia.enCours.cle);
+    montrer(el.btnCleRetirer, cle !== "");
+  }
+
+  function surEnregistrerCle(evenement) {
+    var valeur = rogner(el.cleApi.value);
+    var gardee;
+    if (evenement) {
+      evenement.preventDefault();
+    }
+    if (!cleAutorisee()) {
+      return;
+    }
+    if (!DDJ.api.clePlausible(valeur)) {
+      direCle("Ceci ne ressemble pas à une clé API : elle tient en un seul mot, sans espace, et commence en général par « sk-ant- ».", true);
+      el.cleApi.focus();
+      return;
+    }
+    gardee = DDJ.api.ecrireCle(valeur);
+    el.cleApi.value = "";
+    activerCle();
+    direCle(gardee ? "Clé enregistrée dans ce navigateur. Tu peux la tester." :
+      "Ce navigateur refuse d’enregistrer : la clé ne servira que pendant cette visite.", false);
+  }
+
+  function surRetirerCle() {
+    arreter("cle");
+    DDJ.api.ecrireCle("");
+    activerCle();
+    direCle("Clé retirée de ce navigateur.", false);
+  }
+
+  /* Une toute petite demande, pour savoir si la clé et le modèle répondent. */
+  function surTesterCle() {
+    var controle;
+    if (!ia.parCle || ia.demander === null || ia.enCours.cle) {
+      return;
+    }
+    controle = ouvrir("cle");
+    direCle("Test en cours…", false);
+    rendreCle();
+    ia.demander("Réponds uniquement par le mot : OK", { signal: controle.signal, cache: false }).then(function () {
+      fermer("cle");
+      direCle("La clé fonctionne : " + nomModele(DDJ.api.lireModele()) + " a répondu.", false);
+      rendreCle();
+    }, function (erreur) {
+      var code = erreur && typeof erreur.code === "string" ? erreur.code : "";
+      fermer("cle");
+      if (code === "cancelled") {
+        direCle("", false);
+      } else {
+        direCle(messageErreur(code), true);
+      }
+      rendreCle();
+    });
+  }
+
+  function surChoixModele() {
+    DDJ.api.ecrireModele(el.cleModele.value);
+    activerCle();
+    direCle("Modèle choisi : " + nomModele(DDJ.api.lireModele()) + ".", false);
   }
 
   /* ------------------------------------------------------------------ */
@@ -918,6 +1087,10 @@
     montrer(el.btnQuestionStop, occupe);
 
     montrer(el.reglagesClaude, dispo);
+    texte(el.reglagesClaudeSource, ia.parCle ?
+      "Elles passent par ta clé API et sont facturées sur le crédit de ton compte API." :
+      "Elles passent par ton compte Claude et comptent dans ton usage. La première fois, Claude te demande ton accord.");
+    rendreCle();
     rendreSync();
   }
 
@@ -959,6 +1132,10 @@
       arreter("mesure");
     });
     el.mesureListe.addEventListener("click", surChoixIdee);
+    el.cleFormulaire.addEventListener("submit", surEnregistrerCle);
+    el.btnCleTester.addEventListener("click", surTesterCle);
+    el.btnCleRetirer.addEventListener("click", surRetirerCle);
+    el.cleModele.addEventListener("change", surChoixModele);
     el.questionFormulaire.addEventListener("submit", surQuestion);
     el.btnQuestionStop.addEventListener("click", function () {
       arreter("question");
@@ -984,6 +1161,7 @@
     ia.demander = null;
     ia.photo = false;
     ia.coupe = false;
+    ia.parCle = false;
     ia.enCours = {};
     retourAttente = null;
     telechargements = null;
@@ -1002,6 +1180,8 @@
     app.stockageDistant(false);
     apresRendu();
     if (hote === null || typeof window.Promise !== "function") {
+      /* Pas d’artefact : les demandes passent par la clé API, s’il y en a une. */
+      activerCle();
       return true;
     }
 
@@ -1010,9 +1190,11 @@
     hote.use("sample").then(function (demander) {
       if (typeof demander !== "function" || typeof demander.json !== "function" ||
           typeof window.AbortController !== "function") {
+        activerCle();
         return;
       }
       ia.demander = demander;
+      ia.parCle = false;
       apresRendu();
       if (typeof demander.limits !== "function") {
         return;
@@ -1025,7 +1207,9 @@
         }
         apresRendu();
       }, function () { /* pas de photo dans cette vue : le reste marche */ });
-    }, function () { /* Claude n’est pas joignable ici */ });
+    }, function () {
+      activerCle(); /* Claude n’est pas joignable ici : reste la clé API, hors artefact */
+    });
 
     hote.use("downloads").then(function (capacite) {
       telechargements = capacite && typeof capacite.save === "function" ? capacite : null;

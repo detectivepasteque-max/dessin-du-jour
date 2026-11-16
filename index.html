@@ -583,8 +583,31 @@
 
     <section class="carte" id="reglages-claude" aria-labelledby="reglages-claude-titre" hidden>
       <h2 id="reglages-claude-titre">Avec Claude</h2>
-      <p>Quatre fonctions font appel à Claude, seulement quand tu le demandes : le retour sur une photo de ton dessin, les idées sur mesure, les questions sur un chapitre du guide et l’exercice adapté. Elles passent par ton compte Claude et comptent dans ton usage. La première fois, Claude te demande ton accord.</p>
+      <p>Quatre fonctions font appel à Claude, seulement quand tu le demandes : le retour sur ton dessin (photo, ou feuille à l’écran), les idées sur mesure, les questions sur un chapitre du guide et l’exercice adapté. <span id="reglages-claude-source">Elles passent par ton compte Claude et comptent dans ton usage. La première fois, Claude te demande ton accord.</span></p>
       <p class="note">Si Claude ne répond pas, tout le reste continue de marcher : l’exercice du jour, le minuteur, les idées tirées au hasard, le guide et ta série.</p>
+    </section>
+
+    <section class="carte" id="reglages-cle" aria-labelledby="reglages-cle-titre" hidden>
+      <h2 id="reglages-cle-titre">Clé API Anthropic</h2>
+      <p>Avec une clé API, les fonctions « avec Claude » marchent ici aussi : retour sur ton dessin, idées sur mesure, questions sur le guide, exercice adapté. Chaque demande est facturée sur le crédit de ton compte API, de l’ordre de quelques centimes au plus.</p>
+      <p class="sync-etat" id="cle-etat" data-etat="local" role="status">Aucune clé enregistrée</p>
+      <form id="cle-formulaire" novalidate>
+        <label class="champ-libelle" for="cle-api">Ta clé API</label>
+        <div class="champ-ligne">
+          <input class="champ-texte" type="password" id="cle-api" maxlength="400" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…" aria-describedby="cle-aide">
+          <button type="submit" class="bouton" id="btn-cle-enregistrer">Enregistrer la clé</button>
+        </div>
+        <p class="note" id="cle-aide">La clé reste dans ce navigateur, sur cet appareil. Elle n’est jamais mise dans ta progression ni dans un export, et elle ne part qu’à l’API d’Anthropic. Toute personne qui utilise ce navigateur peut s’en servir : crée une clé réservée à cette appli, avec un plafond de dépense, dans la console d’Anthropic.</p>
+      </form>
+      <div class="champ">
+        <label class="champ-libelle" for="cle-modele">Modèle</label>
+        <select class="champ-texte" id="cle-modele"></select>
+      </div>
+      <div class="actions">
+        <button type="button" class="bouton-secondaire" id="btn-cle-tester" hidden>Tester la clé</button>
+        <button type="button" class="bouton-secondaire" id="btn-cle-retirer" hidden>Retirer la clé</button>
+      </div>
+      <p class="message" id="cle-message" role="status"></p>
     </section>
 
     <section class="carte" aria-labelledby="reglages-effacer-titre">
@@ -657,6 +680,7 @@
 <script src="logique.js"></script>
 <script src="app.js"></script>
 <script src="croquis.js"></script>
+<script src="api.js"></script>
 <script src="claude.js"></script>
 </body>
 </html>
