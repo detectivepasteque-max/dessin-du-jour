@@ -1,6 +1,7 @@
 /* ==========================================================================
    Dessin du jour — app.js
-   Interface de l’appli : affichage, minuteur, calendrier, réglages, stockage.
+   Interface de l’appli : affichage, minuteur, idées, guide « Apprendre »,
+   calendrier, réglages, stockage.
    Toute la logique de dates, d’exercices, de série et d’état vient de
    DDJ.logique (logique.js), jamais réimplémentée ici.
    Script classique (ES5, pas de module) : fonctionne en file:// comme en HTTP.
@@ -33,7 +34,7 @@
   /* ------------------------------------------------------------------ */
 
   var TITRE_BASE = "Dessin du jour";
-  var VUES = ["aujourdhui", "calendrier", "reglages"];
+  var VUES = ["aujourdhui", "idees", "apprendre", "calendrier", "reglages"];
   var CLE = L.CLE_STOCKAGE;
   var PREFIXE_COPIE = CLE + ":illisible-";   /* copies de données illisibles */
   var CLE_MINUTEUR = "dessin-du-jour:minuteur"; /* sessionStorage : survit au rechargement */
@@ -43,6 +44,39 @@
   var PERIODE_BATTEMENT = 250;               /* ms entre deux rafraîchissements du minuteur */
   var PERIODE_VERIF_JOUR = 30000;            /* ms entre deux vérifications du changement de jour */
   var DUREE_MAX_SEANCE = 3 * 3600000;        /* ms : au-delà, une séance de minuteur ne retient plus l’écran sur son jour */
+  var ID_IDEE = "idee";                      /* exerciceId d’un jour coché avec une idée */
+  var PREFIXE_GUIDE = "guide-";              /* exerciceId d’un jour coché avec un exercice du guide : "guide-g03" */
+  var RE_ID_GUIDE = /^guide-(g\d{2})$/;
+  var THEME_IDEE = "Idée libre";
+  var THEME_GUIDE = "Apprendre";
+  var MAX_RECENTES = 6;                      /* idées de la session gardées sous la main */
+  var MARGE_FAVORIS = 10;                    /* le compteur de favoris s’affiche quand il reste au plus 10 places */
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var ATTRIBUTS_SCHEMA = L.SCHEMA_ATTRIBUTS; /* attributs permis sur une forme de schéma */
+
+  /* Icônes au trait (24 × 24) créées par script : [ [balise, attributs], ... ]. */
+  var ICONES = {
+    cadenasOuvert: [
+      ["rect", { x: 5, y: 11, width: 14, height: 9, rx: 2 }],
+      ["path", { d: "M8 11V8a4 4 0 0 1 7.6-1.8" }]
+    ],
+    cadenasFerme: [
+      ["rect", { x: 5, y: 11, width: 14, height: 9, rx: 2 }],
+      ["path", { d: "M8 11V8a4 4 0 0 1 8 0v3" }],
+      ["path", { d: "M12 14.5v2" }]
+    ],
+    ampoule: [
+      ["path", { d: "M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z" }],
+      ["path", { d: "M9.5 19h5M10.5 21.5h3" }]
+    ],
+    attention: [
+      ["path", { d: "M12 4l9 16H3z" }],
+      ["path", { d: "M12 10v4.5M12 17.4v.1" }]
+    ],
+    signet: [
+      ["path", { d: "M7 4h10v16l-5-3.5L7 20z" }]
+    ]
+  };
 
   var ENCOURAGEMENTS = [
     "Bravo, tu as dessiné aujourd’hui. C’est tout ce qui compte.",
@@ -69,7 +103,22 @@
     "btn-demarrer", "btn-pause", "btn-reprendre", "btn-reinitialiser",
     "minuteur-message",
     "zone-fait", "fait-avant", "btn-fait", "fait-apres", "fait-etat",
-    "fait-encouragement", "palier-jour", "ressenti-jour", "btn-annuler",
+    "fait-dessin", "fait-encouragement", "palier-jour", "ressenti-jour", "btn-annuler",
+    "vue-idees", "titre-idees", "idees-absentes", "idees-corps",
+    "idees-categories", "idees-categories-choix", "idees-categorie-description",
+    "idee", "idee-titre", "idee-texte", "idee-morceaux", "idee-aide",
+    "btn-idee-nouvelle", "btn-idee-favori", "btn-idee-jour",
+    "idee-jour-note", "idee-palier",
+    "idees-recentes-vide", "idees-recentes",
+    "idees-favoris-titre", "idees-favoris-vide", "idees-favoris-compte", "idees-favoris",
+    "vue-apprendre", "titre-apprendre", "guide-sommaire", "guide-absent", "guide-corps",
+    "guide-progression-texte", "guide-barre", "guide-reprendre", "guide-termine",
+    "guide-parties",
+    "guide-chapitre", "chapitre-surtitre", "chapitre-titre", "chapitre-resume",
+    "chapitre-corps", "chapitre-suivi-repli", "chapitre-suivi",
+    "btn-chapitre-fait", "btn-chapitre-jour", "chapitre-fait-note",
+    "chapitre-jour-note", "chapitre-palier",
+    "chapitre-prec", "chapitre-prec-titre", "chapitre-suiv", "chapitre-suiv-titre",
     "vue-calendrier", "titre-calendrier",
     "stat-serie", "stat-meilleure", "stat-total", "stat-mois",
     "btn-mois-prec", "mois-titre", "btn-mois-suiv", "btn-mois-courant",
@@ -121,6 +170,32 @@
   var dialogueOuvert = null;
   var confirmationAction = null;
   var confirmationRetour = null;
+
+  /* Écran « Idées » : tout ceci ne vit que le temps de la visite (seuls les
+     favoris sont enregistrés, dans etat.favoris). */
+  var idees = {
+    categorie: L.CLE_SURPRISE,      /* catégorie choisie : "surprise" ou une clé de catégorie */
+    courante: null,                 /* idée affichée (forme de L.genererIdee), null avant la première ouverture */
+    verrous: {},                    /* morceaux gardés : { cleMorceau: index } */
+    recentes: [],                   /* idées précédentes, de la plus récente à la plus ancienne */
+    connues: {},                    /* idées vues pendant la visite, par texte (pour retrouver leurs morceaux) */
+    pretes: false                   /* vrai une fois les boutons de catégorie construits */
+  };
+  var ideeRendue = null;            /* idée dont le texte et les morceaux sont à l’écran */
+
+  /* Écran « Apprendre ». */
+  var chapitreActif = null;         /* id du chapitre ouvert ("g03"), null sur le sommaire */
+  var chapitreRendu = null;         /* id du chapitre dont les blocs sont à l’écran */
+  var exerciceRendu = null;         /* { titre, duree } de l’exercice du chapitre à l’écran */
+  var guideFiches = null;           /* fiches légères des chapitres (voir fichesGuide) */
+  var compteurSchemas = 0;          /* pour donner un id unique à la pointe de flèche de chaque schéma */
+
+  /* Listes reconstruites seulement quand leur contenu change, pour ne pas
+     faire perdre le focus à qui s’y trouve pendant un rafraîchissement. */
+  var signatures = { recentes: null, favoris: null, sommaire: null };
+
+  var palierLocal = null;           /* zone (Idées ou chapitre) où le palier du jour est aussi affiché */
+  var noteMinuit = null;            /* { jour, texte } : séance cochée depuis Idées ou Apprendre juste après minuit */
 
   /* ------------------------------------------------------------------ */
   /* Petites aides                                                       */
@@ -185,6 +260,50 @@
     return element;
   }
 
+  /* Un tableau venu des données, ou un tableau vide si ce n’en est pas un. */
+  function tableau(v) {
+    return Object.prototype.toString.call(v) === "[object Array]" ? v : [];
+  }
+
+  /* Élément SVG. La classe passe par l’attribut "class" (className n’est pas
+     une simple chaîne sur un élément SVG). */
+  function creerSvg(balise, attributs) {
+    var element = doc.createElementNS(SVG_NS, balise);
+    var nom;
+    if (attributs) {
+      for (nom in attributs) {
+        if (possede(attributs, nom)) {
+          element.setAttribute(nom, String(attributs[nom]));
+        }
+      }
+    }
+    return element;
+  }
+
+  /* Icône décorative au trait, à partir d’une entrée de ICONES. */
+  function creerIcone(formes, taille, classe) {
+    var svg = creerSvg("svg", {
+      viewBox: "0 0 24 24",
+      width: taille,
+      height: taille,
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "1.8",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "aria-hidden": "true",
+      focusable: "false"
+    });
+    var i;
+    if (classe) {
+      svg.setAttribute("class", classe);
+    }
+    for (i = 0; i < formes.length; i++) {
+      svg.appendChild(creerSvg(formes[i][0], formes[i][1]));
+    }
+    return svg;
+  }
+
   function aClasse(element, classe) {
     return (" " + element.className + " ").indexOf(" " + classe + " ") !== -1;
   }
@@ -230,6 +349,23 @@
 
   function ficheDuJour(cle) {
     return possede(etat.jours, cle) ? etat.jours[cle] : null;
+  }
+
+  /* D’où vient le dessin d’un jour coché : "idee" (écran « Idées »), "guide"
+     (exercice d’un chapitre d’« Apprendre ») ou "" (exercice du jour, dessin
+     libre, jour non coché). */
+  function origineFiche(fiche) {
+    var id = fiche ? chaine(fiche.exerciceId) : "";
+    if (id === ID_IDEE) {
+      return "idee";
+    }
+    return RE_ID_GUIDE.test(id) ? "guide" : "";
+  }
+
+  /* Id du chapitre ("g03") d’un jour coché avec un exercice du guide, sinon "". */
+  function chapitreDeFiche(fiche) {
+    var decoupe = fiche ? RE_ID_GUIDE.exec(chaine(fiche.exerciceId)) : null;
+    return decoupe ? decoupe[1] : "";
   }
 
   /* ------------------------------------------------------------------ */
@@ -358,15 +494,56 @@
     doc.documentElement.setAttribute("data-theme", etat.reglages.theme);
   }
 
-  function vueDepuisAncre() {
-    var ancre = String(window.location.hash || "").replace(/^#/, "");
-    return VUES.indexOf(ancre) !== -1 ? ancre : "aujourdhui";
+  /* Remet l’ancre sur le sommaire du guide sans ajouter d’étape à l’historique
+     (ancre de chapitre inconnue). Sans effet si le navigateur ne le permet pas. */
+  function corrigerAncreGuide() {
+    try {
+      if (window.history && typeof window.history.replaceState === "function") {
+        window.history.replaceState(null, "", "#apprendre");
+      }
+    } catch (e) { /* refusé (certains navigateurs en file://) : l’ancre reste telle quelle */ }
   }
 
+  /* Écran demandé par l’ancre : { vue, chapitre }. « #apprendre/g03 » ouvre un
+     chapitre du guide ; un chapitre inconnu ramène au sommaire. Toute autre
+     ancre inconnue mène à l’écran du jour. */
+  function routeDepuisAncre() {
+    var ancre = String(window.location.hash || "").replace(/^#/, "");
+    var coupe = ancre.indexOf("/");
+    var suite;
+    if (coupe !== -1 && ancre.slice(0, coupe) === "apprendre") {
+      suite = ancre.slice(coupe + 1);
+      if (ficheChapitre(suite)) {
+        return { vue: "apprendre", chapitre: suite };
+      }
+      corrigerAncreGuide();
+      return { vue: "apprendre", chapitre: null };
+    }
+    return { vue: VUES.indexOf(ancre) !== -1 ? ancre : "aujourdhui", chapitre: null };
+  }
+
+  /* Titre qui reçoit le focus quand on arrive sur un écran. */
+  function titreDeVue(nom) {
+    if (nom === "apprendre" && chapitreActif) {
+      return el.chapitreTitre;
+    }
+    return el[nomCamel("titre-" + nom)];
+  }
+
+  /* Affiche l’écran « nom » (et, pour « apprendre », le sommaire ou le
+     chapitre désigné par chapitreActif, à régler avant l’appel). */
   function afficherVue(nom, deplacerFocus) {
     var liens = el.navPrincipale.getElementsByTagName("a");
     var i;
     vueActive = nom;
+    /* Ce qui ne valait que pour l’écran qu’on quitte. */
+    palierLocal = null;
+    noteMinuit = null;
+    if (nom === "idees") {
+      preparerIdees();
+    }
+    rendreIdees();
+    rendreApprendre();
     for (i = 0; i < VUES.length; i++) {
       montrer(el[nomCamel("vue-" + VUES[i])], VUES[i] === nom);
     }
@@ -379,18 +556,21 @@
     }
     if (deplacerFocus) {
       window.scrollTo(0, 0);
-      focusser(el[nomCamel("titre-" + nom)]);
+      focusser(titreDeVue(nom));
     }
   }
 
   function surChangementAncre() {
-    var nom = vueDepuisAncre();
+    var route = routeDepuisAncre();
     if (dialogueOuvert) {
       fermerDialogue(dialogueOuvert);
     }
     verifierJour();
-    if (nom !== vueActive) {
-      afficherVue(nom, true);
+    /* Passer du sommaire à un chapitre, ou d’un chapitre à l’autre, compte
+       comme un changement d’écran : haut de page et focus sur le titre. */
+    if (route.vue !== vueActive || route.chapitre !== chapitreActif) {
+      chapitreActif = route.chapitre;
+      afficherVue(route.vue, true);
     }
   }
 
@@ -459,7 +639,10 @@
 
   function rendreExercice(exercice, fiche) {
     var restants = L.tiragesRestants(etat, cleJour);
-    var etapes, duree, materiel, siBloque, i, message;
+    /* Jour coché avec une idée ou un exercice du guide : l’exercice proposé
+       reste affiché, mais sans laisser croire que c’est lui qui a été fait. */
+    var autreDessin = origineFiche(fiche) !== "";
+    var etapes, duree, materiel, siBloque, i, message, surtitre;
 
     if (!exercice) {
       montrer(el.exercice, false);
@@ -476,8 +659,12 @@
     }
 
     duree = nombre(exercice.duree);
-    texte(el.exerciceSurtitre, (fiche ? "Ton exercice du jour" : "L’exercice du jour") +
-      (duree > 0 ? " · " + duree + " min conseillées" : ""));
+    if (autreDessin) {
+      surtitre = "L’exercice proposé aujourd’hui";
+    } else {
+      surtitre = fiche ? "Ton exercice du jour" : "L’exercice du jour";
+    }
+    texte(el.exerciceSurtitre, surtitre + (duree > 0 ? " · " + duree + " min conseillées" : ""));
     texte(el.exerciceTitre, chaine(exercice.titre) || "Exercice sans titre");
     texte(el.exerciceConsigne, chaine(exercice.consigne));
 
@@ -499,7 +686,9 @@
 
     /* Changer d’exercice : limité par jour, et figé une fois le jour validé. */
     el.btnChanger.disabled = !!fiche || restants <= 0;
-    if (fiche) {
+    if (autreDessin) {
+      message = "Tu as dessiné autre chose aujourd’hui, et c’est compté. Cet exercice reste là si le cœur t’en dit.";
+    } else if (fiche) {
       message = "Exercice validé : plus besoin d’en changer aujourd’hui.";
     } else if (restants <= 0) {
       message = "Tu as utilisé tes " + L.MAX_TIRAGES + " changements du jour.";
@@ -518,11 +707,27 @@
     }
   }
 
+  /* Ce qui a été dessiné, quand le jour a été coché depuis « Idées » ou
+     « Apprendre » ; "" pour l’exercice du jour (la carte au-dessus le montre). */
+  function phraseDessin(fiche) {
+    var origine = origineFiche(fiche);
+    var titre = chaine(fiche.titre);
+    if (origine === "" || titre === "") {
+      return "";
+    }
+    return "Ton dessin du jour : « " + titre + " », " +
+      (origine === "idee" ? "une idée tirée au hasard." : "un exercice du guide.");
+  }
+
   function rendreFait(fiche) {
+    var dessin;
     montrer(el.faitAvant, !fiche);
     montrer(el.faitApres, !!fiche);
     mettreClasse(el.zoneFait, "est-fait", !!fiche);
     if (fiche) {
+      dessin = phraseDessin(fiche);
+      texte(el.faitDessin, dessin);
+      montrer(el.faitDessin, dessin !== "");
       texte(el.faitEncouragement, ENCOURAGEMENTS[L.hacher(cleJour) % ENCOURAGEMENTS.length]);
       majRessenti(el.ressentiJour, fiche.ressenti);
     }
@@ -656,6 +861,86 @@
     rendreTout();
     focusser(el.btnFait);
     annoncer("Séance décochée.");
+  }
+
+  /* « C’est mon dessin du jour », depuis « Idées » ou « Apprendre » : coche le
+     jour affiché avec ce dessin-là, avec la même suite que « C’est fait »
+     (paliers, série, annonce, passage de minuit). Un jour déjà coché n’est
+     jamais écrasé. infos : { exerciceId, titre, themeNom, duree }.
+     zonePalier et zoneNote : le bloc de palier et la note de l’écran d’où l’on
+     vient ; complement : phrase ajoutée à l’annonce. Renvoie vrai si le jour
+     a été coché. */
+  function cocherDessinDuJour(infos, zonePalier, zoneNote, complement) {
+    var jourCoche = cleJour;
+    var annonce = "Séance cochée." + (complement ? " " + complement : "");
+    var paliers, message;
+    if (ficheDuJour(cleJour)) {
+      return false;
+    }
+    /* logique.js ne lit pas l’horloge : l’horodatage vient d’ici. */
+    infos.faitLe = new Date().toISOString();
+    etat = L.marquerFait(etat, cleJour, infos);
+    paliers = paliersAFeter();
+    palierLocal = null;
+    if (paliers.length > 0) {
+      /* Le palier se fête ici, et aussi sur l’écran du jour si on y passe. */
+      palierJourCle = cleJour;
+      montrerPalier(el.palierJour, paliers);
+      annonce += " " + montrerPalier(zonePalier, paliers);
+      palierLocal = zonePalier;
+    }
+    enregistrer();
+    rendreTout();
+    /* Même règle que surFait : une séance de minuteur commencée la veille est
+       maintenant close, l’écran peut passer au nouveau jour. Le saut est dit
+       juste en dessous, palier compris. */
+    verifierJour(true);
+    if (cleJour !== jourCoche) {
+      message = "Ta séance du " + L.formaterDate(jourCoche, false) +
+        " est cochée. Minuit est passé : voici le nouveau jour.";
+      if (complement) {
+        message += " " + complement;
+      }
+      if (paliers.length > 0) {
+        message += " Palier franchi : " + paliers[paliers.length - 1].nom + ".";
+      }
+      texte(el.minuteurMessage, message);
+      /* Le bouton est revenu (le nouveau jour n’est pas coché) : la note dit
+         à sa place ce qui vient de se passer. */
+      noteMinuit = { jour: cleJour, texte: message };
+      rendreIdees();
+      rendreApprendre();
+      focusser(zoneNote);
+      return true;
+    }
+    /* Le bouton a laissé sa place à la note : le focus la suit. */
+    focusser(zoneNote);
+    annoncer(annonce);
+    return true;
+  }
+
+  /* Bouton « C’est mon dessin du jour » d’un écran (Idées ou chapitre), ou, si
+     le jour affiché est déjà coché, une note qui le dit à sa place.
+     ceDessin : le jour est coché avec le dessin montré par cet écran.
+     noteOui / noteAutre : fin de la note dans l’un et l’autre cas. */
+  function rendreChoixDuJour(bouton, note, zonePalier, ceDessin, noteOui, noteAutre) {
+    var fiche = ficheDuJour(cleJour);
+    var message = "";
+    var titre;
+    if (fiche && ceDessin) {
+      message = noteOui;
+    } else if (fiche) {
+      titre = chaine(fiche.titre);
+      message = "Ton dessin du jour est déjà coché" + (titre !== "" ? " (« " + titre + " »)" : "") +
+        ", et il le reste. " + noteAutre;
+    } else if (noteMinuit !== null && noteMinuit.jour === cleJour) {
+      message = noteMinuit.texte;
+    }
+    montrer(bouton, !fiche);
+    texte(note, message);
+    montrer(note, message !== "");
+    /* Le palier ne se montre que sur l’écran où il a été gagné, et pour ce jour-là. */
+    montrer(zonePalier, palierLocal === zonePalier && !!fiche && palierJourCle === cleJour);
   }
 
   /* Un clic sur le ressenti déjà choisi l’efface : il reste facultatif. */
@@ -1049,6 +1334,943 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Écran « Idées »                                                     */
+  /* ------------------------------------------------------------------ */
+
+  function nombreVerrous() {
+    var total = 0;
+    var nom;
+    for (nom in idees.verrous) {
+      if (possede(idees.verrous, nom)) {
+        total++;
+      }
+    }
+    return total;
+  }
+
+  /* Nom d’une catégorie d’idées d’après sa clé, "" si elle est inconnue. */
+  function nomCategorie(cle) {
+    var categories = L.categoriesIdees();
+    var i;
+    for (i = 0; i < categories.length; i++) {
+      if (categories[i].cle === cle) {
+        return categories[i].nom;
+      }
+    }
+    return "";
+  }
+
+  /* Remplace l’idée affichée. L’ancienne rejoint « Tes dernières idées » (les
+     MAX_RECENTES plus récentes, sans doublon et sans l’idée affichée). */
+  function adopterIdee(idee, garderVerrous) {
+    var ancienne = idees.courante;
+    var gardees = [];
+    var i, texteRecent;
+    if (ancienne && ancienne.texte !== idee.texte) {
+      gardees.push(ancienne);
+    }
+    for (i = 0; i < idees.recentes.length && gardees.length < MAX_RECENTES; i++) {
+      texteRecent = idees.recentes[i].texte;
+      if (texteRecent !== idee.texte && !(ancienne && texteRecent === ancienne.texte)) {
+        gardees.push(idees.recentes[i]);
+      }
+    }
+    idees.recentes = gardees;
+    idees.courante = idee;
+    if (idee.morceaux.length > 0) {
+      /* Préfixe : aucun texte ne peut viser une propriété héritée. */
+      idees.connues["t:" + idee.texte] = idee;
+    }
+    if (!garderVerrous) {
+      idees.verrous = {};
+    }
+    noteMinuit = null;
+  }
+
+  /* Première ouverture de l’écran : une idée est tirée d’office. */
+  function preparerIdees() {
+    var idee;
+    if (idees.courante === null) {
+      idee = L.genererIdee(idees.categorie);
+      if (idee) {
+        adopterIdee(idee, false);
+      }
+    }
+  }
+
+  /* Un morceau de l’idée : une pastille qui est aussi le bouton « garder »
+     (cadenas ouvert ou fermé, selon aria-pressed). */
+  function creerMorceau(morceau) {
+    var item = creer("li");
+    var bouton = creer("button", "idee-morceau");
+    var corps = creer("span", "idee-morceau-corps");
+    bouton.setAttribute("type", "button");
+    bouton.setAttribute("data-morceau", morceau.cle);
+    bouton.setAttribute("aria-pressed", "false");
+    /* Le nom accessible reprend tout le libellé visible : rôle du morceau, puis son texte. */
+    bouton.setAttribute("aria-label", "Garder : " +
+      (chaine(morceau.nom) !== "" ? morceau.nom + ", " : "") + morceau.texte);
+    bouton.appendChild(creerIcone(ICONES.cadenasOuvert, 20, "cadenas-ouvert"));
+    bouton.appendChild(creerIcone(ICONES.cadenasFerme, 20, "cadenas-ferme"));
+    if (chaine(morceau.nom) !== "") {
+      corps.appendChild(creer("span", "idee-morceau-nom", morceau.nom));
+    }
+    corps.appendChild(creer("span", "idee-morceau-texte", morceau.texte));
+    bouton.appendChild(corps);
+    item.appendChild(bouton);
+    return item;
+  }
+
+  /* Met les cadenas d’accord avec idees.verrous, sans reconstruire les
+     pastilles (le focus reste où il est). */
+  function majVerrous() {
+    var idee = idees.courante;
+    var boutons = el.ideeMorceaux.getElementsByTagName("button");
+    var gardes = 0;
+    var i, garde, aide;
+    for (i = 0; i < boutons.length; i++) {
+      garde = possede(idees.verrous, boutons[i].getAttribute("data-morceau"));
+      boutons[i].setAttribute("aria-pressed", garde ? "true" : "false");
+      if (garde) {
+        gardes++;
+      }
+    }
+    if (!idee || boutons.length === 0) {
+      aide = "Idée reprise telle quelle : « Nouvelle idée » en tirera une autre.";
+    } else if (gardes === 0) {
+      aide = "Touche un morceau pour le garder : « Nouvelle idée » ne changera que les autres.";
+    } else if (gardes >= boutons.length) {
+      aide = "Tout est gardé : libère un morceau pour pouvoir tirer une autre idée.";
+    } else {
+      aide = pluriel(gardes, "morceau gardé", "morceaux gardés") + " : « Nouvelle idée » ne changera que le reste.";
+    }
+    texte(el.ideeAide, aide);
+  }
+
+  /* Boutons de catégorie (construits une seule fois, après « Surprise » qui
+     est déjà dans la page) et description de la catégorie choisie. */
+  function rendreCategories(categories) {
+    var description = "Une catégorie tirée au hasard à chaque fois.";
+    var connue = idees.categorie === L.CLE_SURPRISE;
+    var i, etiquette, radio;
+    if (!idees.pretes) {
+      for (i = 0; i < categories.length; i++) {
+        etiquette = creer("label", "choix-option");
+        radio = doc.createElement("input");
+        radio.setAttribute("type", "radio");
+        radio.setAttribute("name", "idees-categorie");
+        radio.setAttribute("value", categories[i].cle);
+        etiquette.appendChild(radio);
+        etiquette.appendChild(creer("span", "", categories[i].nom || categories[i].cle));
+        el.ideesCategoriesChoix.appendChild(etiquette);
+      }
+      idees.pretes = true;
+    }
+    for (i = 0; i < categories.length; i++) {
+      if (categories[i].cle === idees.categorie) {
+        connue = true;
+        description = categories[i].description;
+      }
+    }
+    if (!connue) {
+      idees.categorie = L.CLE_SURPRISE;
+    }
+    cocherRadios(el.ideesCategories, idees.categorie);
+    texte(el.ideesCategorieDescription, description);
+  }
+
+  function rendreIdeeCourante() {
+    var idee = idees.courante;
+    var fiche = ficheDuJour(cleJour);
+    var i, titreFiche;
+    montrer(el.idee, !!idee);
+    if (!idee) {
+      ideeRendue = null;
+      return;
+    }
+    if (idee !== ideeRendue) {
+      ideeRendue = idee;
+      texte(el.ideeTitre, "Ton idée" + (chaine(idee.categorieNom) !== "" ? " · " + idee.categorieNom : ""));
+      /* Un élément neuf à chaque idée : son animation d’apparition repart. */
+      vider(el.ideeTexte);
+      el.ideeTexte.appendChild(creer("span", "idee-apparition", idee.texte));
+      vider(el.ideeMorceaux);
+      for (i = 0; i < idee.morceaux.length; i++) {
+        if (chaine(idee.morceaux[i].texte) !== "") {
+          el.ideeMorceaux.appendChild(creerMorceau(idee.morceaux[i]));
+        }
+      }
+      montrer(el.ideeMorceaux, !!el.ideeMorceaux.firstChild);
+    }
+    majVerrous();
+    el.btnIdeeFavori.setAttribute("aria-pressed", L.estFavori(etat, idee.texte) ? "true" : "false");
+    /* Le titre enregistré peut avoir été raccourci : il commence comme l’idée. */
+    titreFiche = fiche ? chaine(fiche.titre) : "";
+    rendreChoixDuJour(el.btnIdeeJour, el.ideeJourNote, el.ideePalier,
+      origineFiche(fiche) === "idee" && titreFiche !== "" && idee.texte.indexOf(titreFiche) === 0,
+      "C’est noté : cette idée est ton dessin du jour.",
+      "Si cette idée te plaît, garde-la en favori pour un autre jour.");
+  }
+
+  function rendreRecentes() {
+    var liste = idees.recentes;
+    var textes = [];
+    var i, item, bouton, signature;
+    for (i = 0; i < liste.length; i++) {
+      textes.push(liste[i].texte);
+    }
+    montrer(el.ideesRecentesVide, liste.length === 0);
+    montrer(el.ideesRecentes, liste.length > 0);
+    signature = JSON.stringify(textes);
+    if (signature === signatures.recentes) {
+      return;
+    }
+    signatures.recentes = signature;
+    vider(el.ideesRecentes);
+    for (i = 0; i < liste.length; i++) {
+      item = creer("li");
+      bouton = creer("button", "idees-recente");
+      bouton.setAttribute("type", "button");
+      bouton.setAttribute("data-index", String(i));
+      bouton.setAttribute("aria-label", "Reprendre : " +
+        (chaine(liste[i].categorieNom) !== "" ? liste[i].categorieNom + ", " : "") + liste[i].texte);
+      if (chaine(liste[i].categorieNom) !== "") {
+        bouton.appendChild(creer("span", "idees-recente-categorie", liste[i].categorieNom));
+      }
+      bouton.appendChild(creer("span", "idees-recente-texte", liste[i].texte));
+      item.appendChild(bouton);
+      el.ideesRecentes.appendChild(item);
+    }
+  }
+
+  function creerBoutonFavori(classe, libelle, action, index, nomAccessible) {
+    var bouton = creer("button", classe, libelle);
+    bouton.setAttribute("type", "button");
+    bouton.setAttribute("data-action", action);
+    bouton.setAttribute("data-index", String(index));
+    bouton.setAttribute("aria-label", nomAccessible);
+    return bouton;
+  }
+
+  function rendreFavoris() {
+    var favoris = tableau(etat.favoris);
+    var total = favoris.length;
+    var textes = [];
+    var compte = "";
+    var i, item, actions, signature;
+    for (i = 0; i < total; i++) {
+      textes.push(favoris[i].texte);
+    }
+    montrer(el.ideesFavorisVide, total === 0);
+    montrer(el.ideesFavoris, total > 0);
+    /* Le compteur n’apparaît qu’à l’approche du plafond. */
+    if (total >= L.MAX_FAVORIS) {
+      compte = total + " favoris sur " + L.MAX_FAVORIS + " : la liste est pleine. Si tu en gardes un nouveau, " +
+        "le plus ancien lui laissera sa place.";
+    } else if (total > 0 && total >= L.MAX_FAVORIS - MARGE_FAVORIS) {
+      compte = total + " favoris sur " + L.MAX_FAVORIS + " au plus.";
+    }
+    texte(el.ideesFavorisCompte, compte);
+    montrer(el.ideesFavorisCompte, compte !== "");
+    signature = JSON.stringify(textes);
+    if (signature === signatures.favoris) {
+      return;
+    }
+    signatures.favoris = signature;
+    vider(el.ideesFavoris);
+    for (i = 0; i < total; i++) {
+      item = creer("li", "idees-item");
+      item.appendChild(creer("span", "idees-item-texte", favoris[i].texte));
+      actions = creer("span", "idees-item-actions");
+      actions.appendChild(creerBoutonFavori("bouton-secondaire bouton-petit", "Reprendre", "reprendre", i,
+        "Reprendre : " + favoris[i].texte));
+      actions.appendChild(creerBoutonFavori("bouton-discret", "Retirer", "retirer", i,
+        "Retirer des favoris : " + favoris[i].texte));
+      item.appendChild(actions);
+      el.ideesFavoris.appendChild(item);
+    }
+  }
+
+  function rendreIdees() {
+    var categories = L.categoriesIdees();
+    var disponible = categories.length > 0;
+    montrer(el.ideesAbsentes, !disponible);
+    montrer(el.ideesCorps, disponible);
+    if (!disponible) {
+      return;
+    }
+    rendreCategories(categories);
+    rendreIdeeCourante();
+    rendreRecentes();
+    rendreFavoris();
+  }
+
+  /* Affiche une idée tirée ou reprise, et la fait dire par la zone d’annonce
+     (sans déplacer le focus). */
+  function montrerNouvelleIdee(idee, garderVerrous) {
+    adopterIdee(idee, garderVerrous);
+    rendreIdees();
+    annoncer("Nouvelle idée : " + idee.texte + ".");
+  }
+
+  /* « Nouvelle idée » : les morceaux gardés restent, dans la catégorie de
+     l’idée affichée (même en « Surprise ») ; sans morceau gardé, on tire dans
+     la catégorie choisie. */
+  function surNouvelleIdee() {
+    var courante = idees.courante;
+    var cle = idees.categorie;
+    var options = {};
+    var idee;
+    if (courante) {
+      options.eviter = courante.texte;
+      if (nombreVerrous() > 0) {
+        options.verrous = idees.verrous;
+        cle = courante.categorieCle;
+      }
+    }
+    idee = L.genererIdee(cle, options);
+    if (!idee) {
+      return;
+    }
+    if (courante && idee.texte === courante.texte) {
+      /* Tout est gardé : il n’y a rien d’autre à tirer. */
+      rendreIdees();
+      annoncer("Tous les morceaux sont gardés : libère-en un pour tirer une autre idée.");
+      return;
+    }
+    montrerNouvelleIdee(idee, true);
+  }
+
+  /* Changer de catégorie libère tous les morceaux et tire une nouvelle idée. */
+  function surChoixCategorie(valeur) {
+    var courante = idees.courante;
+    var idee;
+    idees.categorie = valeur;
+    idees.verrous = {};
+    idee = L.genererIdee(valeur, courante ? { eviter: courante.texte } : {});
+    if (!idee) {
+      /* Catégorie inconnue : rendreIdees revient à « Surprise ». */
+      rendreIdees();
+      return;
+    }
+    montrerNouvelleIdee(idee, false);
+  }
+
+  function surVerrou(bouton) {
+    var idee = idees.courante;
+    var cle = bouton.getAttribute("data-morceau");
+    var i;
+    if (!idee) {
+      return;
+    }
+    if (possede(idees.verrous, cle)) {
+      delete idees.verrous[cle];
+    } else {
+      for (i = 0; i < idee.morceaux.length; i++) {
+        if (idee.morceaux[i].cle === cle) {
+          idees.verrous[cle] = idee.morceaux[i].index;
+        }
+      }
+    }
+    majVerrous();
+  }
+
+  function surFavoriIdee() {
+    var idee = idees.courante;
+    var message;
+    if (!idee) {
+      return;
+    }
+    if (L.estFavori(etat, idee.texte)) {
+      etat = L.retirerFavori(etat, idee.texte);
+      message = "Idée retirée des favoris.";
+    } else {
+      message = etat.favoris.length >= L.MAX_FAVORIS ?
+        "Idée gardée en favori. Le plus ancien favori lui a laissé sa place." :
+        "Idée gardée en favori.";
+      etat = L.ajouterFavori(etat, idee, new Date().toISOString());
+    }
+    enregistrer();
+    rendreIdees();
+    annoncer(message);
+  }
+
+  function surIdeeDuJour() {
+    var idee = idees.courante;
+    if (!idee) {
+      return;
+    }
+    cocherDessinDuJour({
+      exerciceId: ID_IDEE,
+      titre: idee.texte,
+      themeNom: THEME_IDEE,
+      duree: minuteur.dureeMin
+    }, el.ideePalier, el.ideeJourNote, "");
+  }
+
+  /* Réaffiche une idée (dernières idées ou favoris), sans morceau gardé, et
+     amène le focus dessus. */
+  function reprendreIdee(idee) {
+    adopterIdee(idee, false);
+    rendreIdees();
+    focusser(el.ideeTexte);
+  }
+
+  function surIdeeRecente(index) {
+    var idee = idees.recentes[index];
+    if (idee) {
+      reprendreIdee(idee);
+    }
+  }
+
+  /* « Reprendre » ou « Retirer » dans la liste des favoris. Un favori ne garde
+     que son texte : ses morceaux ne reviennent que s’il a été vu pendant
+     cette visite. */
+  function surActionFavori(action, index) {
+    var favori = etat.favoris[index];
+    var boutons, i, cible;
+    if (!favori) {
+      return;
+    }
+    if (action === "reprendre") {
+      reprendreIdee(possede(idees.connues, "t:" + favori.texte) ? idees.connues["t:" + favori.texte] : {
+        categorieCle: favori.categorieCle,
+        categorieNom: nomCategorie(favori.categorieCle),
+        texte: favori.texte,
+        morceaux: []
+      });
+      return;
+    }
+    if (action !== "retirer") {
+      return;
+    }
+    etat = L.retirerFavori(etat, favori.texte);
+    enregistrer();
+    rendreIdees();
+    /* Le bouton cliqué a disparu : le focus passe au favori qui a pris sa
+       place, sinon au dernier, sinon au titre de la liste. */
+    boutons = el.ideesFavoris.getElementsByTagName("button");
+    cible = null;
+    for (i = 0; i < boutons.length; i++) {
+      if (boutons[i].getAttribute("data-action") === "retirer") {
+        cible = boutons[i];
+        if (Number(boutons[i].getAttribute("data-index")) >= index) {
+          break;
+        }
+      }
+    }
+    focusser(cible || el.ideesFavorisTitre);
+    annoncer("Favori retiré.");
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Écran « Apprendre »                                                 */
+  /* ------------------------------------------------------------------ */
+
+  /* Fiches légères des chapitres, dans l’ordre : { id, numero, partie, titre,
+     resume }. Les données du guide ne changent pas pendant la visite : la
+     liste n’est calculée qu’une fois (L.chapitresGuide copie tout le guide). */
+  function fichesGuide() {
+    var chapitres, i;
+    if (guideFiches === null) {
+      guideFiches = [];
+      chapitres = L.chapitresGuide();
+      for (i = 0; i < chapitres.length; i++) {
+        guideFiches.push({
+          id: chapitres[i].id,
+          numero: chapitres[i].numero,
+          partie: chapitres[i].partie,
+          titre: chaine(chapitres[i].titre) || "Chapitre " + chapitres[i].numero,
+          resume: chaine(chapitres[i].resume)
+        });
+      }
+    }
+    return guideFiches;
+  }
+
+  function ficheChapitre(id) {
+    var fiches = fichesGuide();
+    var i;
+    for (i = 0; i < fiches.length; i++) {
+      if (fiches[i].id === id) {
+        return fiches[i];
+      }
+    }
+    return null;
+  }
+
+  /* --- Sommaire --- */
+
+  function creerLienChapitre(fiche, fait) {
+    var item = creer("li", "guide-item" + (fait ? " est-fait" : ""));
+    var lien = creer("a", "guide-lien");
+    var numero = creer("span", "guide-numero", String(fiche.numero));
+    var corps = creer("span", "guide-item-corps");
+    var titre = creer("span", "guide-item-titre");
+    var marque, coche;
+    lien.setAttribute("href", "#apprendre/" + fiche.id);
+    numero.setAttribute("aria-hidden", "true");
+    titre.appendChild(creer("span", "visuellement-cache", "Chapitre " + fiche.numero + " : "));
+    titre.appendChild(doc.createTextNode(fiche.titre));
+    corps.appendChild(titre);
+    if (fiche.resume !== "") {
+      corps.appendChild(doc.createTextNode(" "));
+      corps.appendChild(creer("span", "guide-item-resume", fiche.resume));
+    }
+    if (fait) {
+      /* Marque « fait » écrite en toutes lettres, pas seulement en couleur. */
+      marque = creer("span", "guide-item-etat");
+      coche = creer("span", "", "✓ ");
+      coche.setAttribute("aria-hidden", "true");
+      marque.appendChild(coche);
+      marque.appendChild(doc.createTextNode("Exercice fait"));
+      corps.appendChild(doc.createTextNode(" "));
+      corps.appendChild(marque);
+    }
+    lien.appendChild(numero);
+    lien.appendChild(corps);
+    item.appendChild(lien);
+    return item;
+  }
+
+  /* Chapitres groupés par partie. Un chapitre dont la partie est inconnue
+     est rangé dans un dernier groupe, pour rester accessible. */
+  function rendreListeGuide(fiches) {
+    var parties = L.partiesGuide();
+    var groupes = [];
+    var orphelins = [];
+    var marques = [];
+    var i, j, groupe, section, titre, liste, signature;
+    for (i = 0; i < fiches.length; i++) {
+      marques.push(fiches[i].id + (L.chapitreFait(etat, fiches[i].id) ? "+" : "-"));
+    }
+    signature = marques.join(" ");
+    if (signature === signatures.sommaire) {
+      return;
+    }
+    signatures.sommaire = signature;
+
+    for (i = 0; i < parties.length; i++) {
+      groupes.push({ numero: parties[i].numero, titre: parties[i].titre, fiches: [] });
+    }
+    for (i = 0; i < fiches.length; i++) {
+      groupe = null;
+      for (j = 0; j < groupes.length && groupe === null; j++) {
+        if (groupes[j].numero === fiches[i].partie) {
+          groupe = groupes[j];
+        }
+      }
+      if (groupe) {
+        groupe.fiches.push(fiches[i]);
+      } else {
+        orphelins.push(fiches[i]);
+      }
+    }
+    if (orphelins.length > 0) {
+      groupes.push({ numero: null, titre: groupes.length > 0 ? "Autres chapitres" : "Les chapitres", fiches: orphelins });
+    }
+
+    vider(el.guideParties);
+    for (i = 0; i < groupes.length; i++) {
+      groupe = groupes[i];
+      if (groupe.fiches.length > 0) {
+        section = creer("section", "guide-partie");
+        titre = creer("h2");
+        if (groupe.numero !== null) {
+          titre.appendChild(creer("span", "guide-partie-numero", "Partie " + groupe.numero));
+          titre.appendChild(doc.createTextNode(" "));
+        }
+        titre.appendChild(doc.createTextNode(groupe.titre || "Chapitres"));
+        liste = creer("ol", "guide-liste");
+        liste.setAttribute("role", "list");
+        for (j = 0; j < groupe.fiches.length; j++) {
+          liste.appendChild(creerLienChapitre(groupe.fiches[j], L.chapitreFait(etat, groupe.fiches[j].id)));
+        }
+        section.appendChild(titre);
+        section.appendChild(liste);
+        el.guideParties.appendChild(section);
+      }
+    }
+  }
+
+  function rendreSommaire(fiches) {
+    var total = fiches.length;
+    var faits = L.nombreChapitresFaits(etat);
+    var prochain = null;
+    var i;
+    montrer(el.guideAbsent, total === 0);
+    montrer(el.guideCorps, total > 0);
+    if (total === 0) {
+      return;
+    }
+    texte(el.guideProgressionTexte, pluriel(faits, "exercice fait", "exercices faits") + " sur " + total);
+    el.guideBarre.style.width = Math.round(100 * faits / total) + "%";
+    /* Premier chapitre pas encore fait, dans l’ordre du guide. */
+    for (i = 0; i < total && prochain === null; i++) {
+      if (!L.chapitreFait(etat, fiches[i].id)) {
+        prochain = fiches[i];
+      }
+    }
+    if (prochain !== null) {
+      el.guideReprendre.setAttribute("href", "#apprendre/" + prochain.id);
+      texte(el.guideReprendre, (faits === 0 ? "Commencer par le chapitre " : "Reprendre au chapitre ") + prochain.numero);
+    }
+    montrer(el.guideReprendre, prochain !== null);
+    montrer(el.guideTermine, prochain === null);
+    rendreListeGuide(fiches);
+  }
+
+  /* --- Blocs d’un chapitre --- */
+
+  function creerListe(balise, classe, elements) {
+    var liste = creer(balise, classe);
+    var i;
+    for (i = 0; i < elements.length; i++) {
+      if (chaine(elements[i]) !== "") {
+        liste.appendChild(creer("li", "", elements[i]));
+      }
+    }
+    return liste.firstChild ? liste : null;
+  }
+
+  /* Encadré « Astuce » ou « Piège » : une icône et un libellé les
+     distinguent, en plus de la couleur et du bord. */
+  function creerEncadre(genre, libelle, icone, contenu) {
+    var boite, titre;
+    if (contenu === "") {
+      return null;
+    }
+    boite = creer("div", "encadre encadre-" + genre);
+    boite.setAttribute("role", "note");
+    titre = creer("p", "encadre-titre");
+    titre.appendChild(creerIcone(icone, 20, ""));
+    titre.appendChild(creer("span", "", libelle));
+    boite.appendChild(titre);
+    boite.appendChild(creer("p", "", contenu));
+    return boite;
+  }
+
+  function creerRetenir(elements) {
+    var liste = creerListe("ul", "chapitre-liste", elements);
+    var boite, titre;
+    if (!liste) {
+      return null;
+    }
+    boite = creer("div", "encadre encadre-retenir");
+    titre = creer("h2", "encadre-titre");
+    titre.appendChild(creerIcone(ICONES.signet, 20, ""));
+    titre.appendChild(creer("span", "", "À retenir"));
+    boite.appendChild(titre);
+    boite.appendChild(liste);
+    return boite;
+  }
+
+  /* Une forme de schéma déjà acceptée par L.validerForme, en élément SVG.
+     Aucune couleur ici : la classe « schema-… » la donne (style.css, palette
+     propre aux schémas, la même dans les deux thèmes). */
+  function creerForme(forme, idPointe) {
+    var attributs = forme[1];
+    var noeud = creerSvg(forme[0], null);
+    var i, nom;
+    for (i = 0; i < ATTRIBUTS_SCHEMA.length; i++) {
+      nom = ATTRIBUTS_SCHEMA[i];
+      if (possede(attributs, nom)) {
+        if (nom === "classe") {
+          noeud.setAttribute("class", "schema-" + attributs.classe);
+        } else if (nom === "ancre") {
+          noeud.setAttribute("text-anchor", attributs.ancre);
+        } else {
+          noeud.setAttribute(nom, String(attributs[nom]));
+        }
+      }
+    }
+    if (attributs.classe === "fleche") {
+      noeud.setAttribute("marker-end", "url(#" + idPointe + ")");
+    }
+    if (forme[0] === "text") {
+      noeud.textContent = forme[2];
+    }
+    return noeud;
+  }
+
+  /* Schéma : <figure> avec un <svg> construit forme par forme. Seules les
+     formes acceptées par L.validerForme sont dessinées ; un schéma sans
+     aucune forme valide n’est pas affiché (null). */
+  function creerSchema(bloc) {
+    var largeur = nombre(bloc.largeur) > 0 ? bloc.largeur : L.SCHEMA_LARGEUR;
+    var hauteur = nombre(bloc.hauteur);
+    var formes = tableau(bloc.formes);
+    var legende = chaine(bloc.legende);
+    var dessinees = 0;
+    var figure, svg, definitions, pointe, idPointe, i;
+    if (hauteur <= 0 || largeur > 4000 || hauteur > 4000) {
+      return null;
+    }
+    compteurSchemas++;
+    idPointe = "schema-pointe-" + compteurSchemas;
+    svg = creerSvg("svg", {
+      "class": "schema-dessin",
+      viewBox: "0 0 " + largeur + " " + hauteur,
+      width: largeur,
+      height: hauteur,
+      role: "img",
+      "aria-label": chaine(bloc.alt) || legende || "Schéma",
+      focusable: "false"
+    });
+    /* Pointe des flèches : un marqueur propre à ce schéma, en unités du dessin
+       (elle grandit avec lui, comme les étiquettes). Sa pointe tombe presque
+       au bout du trait, qu’elle recouvre. */
+    definitions = creerSvg("defs", null);
+    pointe = creerSvg("marker", {
+      id: idPointe,
+      viewBox: "0 0 10 10",
+      refX: 9,
+      refY: 5,
+      markerWidth: 9,
+      markerHeight: 9,
+      markerUnits: "userSpaceOnUse",
+      orient: "auto"
+    });
+    pointe.appendChild(creerSvg("path", { d: "M 0 1 L 10 5 L 0 9 Z", "class": "schema-pointe" }));
+    definitions.appendChild(pointe);
+    svg.appendChild(definitions);
+    for (i = 0; i < formes.length; i++) {
+      if (L.validerForme(formes[i], largeur, hauteur).ok) {
+        svg.appendChild(creerForme(formes[i], idPointe));
+        dessinees++;
+      }
+    }
+    if (dessinees === 0) {
+      return null;
+    }
+    figure = creer("figure", "schema");
+    figure.appendChild(svg);
+    if (legende !== "") {
+      figure.appendChild(creer("figcaption", "schema-legende", legende));
+    }
+    return figure;
+  }
+
+  /* Carte « À toi » : l’exercice du chapitre. principal : c’est l’exercice
+     auquel se rattache le suivi (il donne son nom à la carte). */
+  function creerCarteExercice(bloc, principal) {
+    var carte = creer("section", "carte carte-accent chapitre-exercice");
+    var titre = creer("h2", "", chaine(bloc.titre) || "Exercice");
+    var etapes = tableau(bloc.etapes);
+    var liste = creer("ol", "etapes");
+    var duree = nombre(bloc.duree);
+    var consigne = chaine(bloc.consigne);
+    var materiel = chaine(bloc.materiel);
+    var i, ligne;
+    if (principal) {
+      titre.setAttribute("id", "chapitre-exercice-titre");
+      carte.setAttribute("aria-labelledby", "chapitre-exercice-titre");
+    }
+    carte.appendChild(creer("p", "surtitre", "À toi" + (duree > 0 ? " · " + duree + " min" : "")));
+    carte.appendChild(titre);
+    if (consigne !== "") {
+      carte.appendChild(creer("p", "consigne", consigne));
+    }
+    for (i = 0; i < etapes.length; i++) {
+      if (chaine(etapes[i]) !== "") {
+        liste.appendChild(creerEtape(etapes[i]));
+      }
+    }
+    if (liste.firstChild) {
+      carte.appendChild(creer("h3", "", "Les étapes"));
+      carte.appendChild(liste);
+    }
+    if (materiel !== "") {
+      ligne = creer("p", "materiel");
+      ligne.appendChild(creer("strong", "", "Matériel :"));
+      ligne.appendChild(doc.createTextNode(" " + materiel));
+      carte.appendChild(ligne);
+    }
+    return carte;
+  }
+
+  /* Élément à afficher pour un bloc de chapitre, ou null (type inconnu, bloc
+     vide ou mal formé : il est simplement passé). */
+  function creerBloc(bloc, premierExercice) {
+    var type, contenu;
+    if (bloc === null || typeof bloc !== "object") {
+      return null;
+    }
+    type = chaine(bloc.type);
+    contenu = chaine(bloc.contenu);
+    if (type === "texte") {
+      return contenu !== "" ? creer("p", "", contenu) : null;
+    }
+    if (type === "titre") {
+      return contenu !== "" ? creer("h2", "chapitre-intertitre", contenu) : null;
+    }
+    if (type === "liste") {
+      return creerListe("ul", "chapitre-liste", tableau(bloc.elements));
+    }
+    if (type === "etapes") {
+      return creerListe("ol", "chapitre-etapes", tableau(bloc.elements));
+    }
+    if (type === "astuce") {
+      return creerEncadre("astuce", "Astuce", ICONES.ampoule, contenu);
+    }
+    if (type === "piege") {
+      return creerEncadre("piege", "Piège", ICONES.attention, contenu);
+    }
+    if (type === "retenir") {
+      return creerRetenir(tableau(bloc.elements));
+    }
+    if (type === "schema") {
+      return creerSchema(bloc);
+    }
+    if (type === "exercice") {
+      return creerCarteExercice(bloc, premierExercice);
+    }
+    return null;
+  }
+
+  /* --- Chapitre --- */
+
+  function rendreLienVoisin(lien, zoneTitre, voisin) {
+    montrer(lien, !!voisin);
+    if (voisin) {
+      lien.setAttribute("href", "#apprendre/" + voisin.id);
+      texte(zoneTitre, voisin.numero + ". " + chaine(voisin.titre));
+    }
+  }
+
+  /* Construit le chapitre à l’écran : en-tête, blocs dans l’ordre, liens vers
+     les chapitres voisins. N’est appelé que quand on change de chapitre. */
+  function construireChapitre(fiche) {
+    var chapitre = L.chapitreParId(fiche.id);
+    var blocs = chapitre ? tableau(chapitre.blocs) : [];
+    var parties = L.partiesGuide();
+    var surtitre = "Le guide";
+    var carteExercice = null;
+    var i, noeud, estExercice;
+
+    chapitreRendu = fiche.id;
+    exerciceRendu = null;
+    if (palierLocal === el.chapitrePalier) {
+      palierLocal = null;
+    }
+
+    for (i = 0; i < parties.length; i++) {
+      if (parties[i].numero === fiche.partie && parties[i].titre !== "") {
+        surtitre = "Partie " + parties[i].numero + " · " + parties[i].titre;
+      }
+    }
+    texte(el.chapitreSurtitre, surtitre);
+    vider(el.chapitreTitre);
+    el.chapitreTitre.appendChild(creer("span", "chapitre-numero",
+      "Chapitre " + fiche.numero + " sur " + fichesGuide().length));
+    el.chapitreTitre.appendChild(doc.createTextNode(" "));
+    el.chapitreTitre.appendChild(creer("span", "chapitre-nom", fiche.titre));
+    texte(el.chapitreResume, fiche.resume);
+    montrer(el.chapitreResume, fiche.resume !== "");
+
+    /* Le suivi quitte la carte « À toi » de l’ancien chapitre avant qu’elle
+       soit effacée, puis rejoint celle du nouveau. */
+    el.chapitreSuiviRepli.appendChild(el.chapitreSuivi);
+    vider(el.chapitreCorps);
+    for (i = 0; i < blocs.length; i++) {
+      estExercice = blocs[i] !== null && typeof blocs[i] === "object" && blocs[i].type === "exercice";
+      noeud = creerBloc(blocs[i], estExercice && carteExercice === null);
+      if (noeud) {
+        el.chapitreCorps.appendChild(noeud);
+        if (estExercice && carteExercice === null) {
+          carteExercice = noeud;
+          exerciceRendu = { titre: chaine(blocs[i].titre), duree: nombre(blocs[i].duree) };
+        }
+      }
+    }
+    if (carteExercice !== null) {
+      carteExercice.appendChild(el.chapitreSuivi);
+    }
+
+    rendreLienVoisin(el.chapitrePrec, el.chapitrePrecTitre, L.chapitreVoisin(fiche.id, -1));
+    rendreLienVoisin(el.chapitreSuiv, el.chapitreSuivTitre, L.chapitreVoisin(fiche.id, 1));
+  }
+
+  /* État du suivi sous l’exercice : bascule « J’ai fait cet exercice » et
+     bouton (ou note) du dessin du jour. */
+  function majSuiviChapitre(fiche) {
+    var date = L.dateChapitre(etat, fiche.id);
+    el.btnChapitreFait.setAttribute("aria-pressed", date !== null ? "true" : "false");
+    texte(el.chapitreFaitNote, date !== null ?
+      "Noté comme fait le " + L.formaterDate(date, true) + "." :
+      "À cocher quand tu as fait l’exercice, peu importe le résultat.");
+    rendreChoixDuJour(el.btnChapitreJour, el.chapitreJourNote, el.chapitrePalier,
+      chapitreDeFiche(ficheDuJour(cleJour)) === fiche.id,
+      "C’est noté : cet exercice est ton dessin du jour.",
+      "Tu peux quand même noter cet exercice comme fait.");
+  }
+
+  function rendreApprendre() {
+    var fiches = fichesGuide();
+    var fiche = chapitreActif ? ficheChapitre(chapitreActif) : null;
+    if (!fiche) {
+      chapitreActif = null;
+    }
+    montrer(el.guideSommaire, !fiche);
+    montrer(el.guideChapitre, !!fiche);
+    if (fiche) {
+      if (fiche.id !== chapitreRendu) {
+        construireChapitre(fiche);
+      }
+      majSuiviChapitre(fiche);
+    } else {
+      rendreSommaire(fiches);
+    }
+  }
+
+  function surChapitreFait() {
+    var fiche = chapitreActif ? ficheChapitre(chapitreActif) : null;
+    var message;
+    if (!fiche) {
+      return;
+    }
+    if (L.chapitreFait(etat, fiche.id)) {
+      etat = L.annulerChapitre(etat, fiche.id);
+      message = "Exercice du chapitre " + fiche.numero + " décoché.";
+    } else {
+      etat = L.marquerChapitre(etat, fiche.id, cleJour);
+      message = "Exercice du chapitre " + fiche.numero + " noté comme fait.";
+      if (L.nombreChapitresFaits(etat) >= fichesGuide().length) {
+        message += " Tu as fait tous les exercices du guide. Bravo !";
+      }
+    }
+    enregistrer();
+    rendreApprendre();
+    annoncer(message);
+  }
+
+  /* « C’est mon dessin du jour » sous l’exercice : coche le jour avec cet
+     exercice et note aussi le chapitre comme fait. */
+  function surChapitreDuJour() {
+    var fiche = chapitreActif ? ficheChapitre(chapitreActif) : null;
+    var duree, titre, dejaFait, complement;
+    if (!fiche || ficheDuJour(cleJour)) {
+      return;
+    }
+    /* La durée de l’exercice si le minuteur la propose, sinon celle qui y est réglée. */
+    duree = (exerciceRendu !== null && L.DUREES.indexOf(exerciceRendu.duree) !== -1) ?
+      exerciceRendu.duree : minuteur.dureeMin;
+    titre = (exerciceRendu !== null && exerciceRendu.titre !== "") ? exerciceRendu.titre : fiche.titre;
+    dejaFait = L.chapitreFait(etat, fiche.id);
+    etat = L.marquerChapitre(etat, fiche.id, cleJour);
+    complement = "Exercice du chapitre " + fiche.numero + " noté comme fait.";
+    if (!dejaFait && L.nombreChapitresFaits(etat) >= fichesGuide().length) {
+      complement += " Tu as fait tous les exercices du guide. Bravo !";
+    }
+    cocherDessinDuJour({
+      exerciceId: PREFIXE_GUIDE + fiche.id,
+      titre: titre,
+      themeNom: THEME_GUIDE,
+      duree: duree
+    }, el.chapitrePalier, el.chapitreJourNote, complement);
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Écran « Calendrier »                                                */
   /* ------------------------------------------------------------------ */
 
@@ -1406,7 +2628,7 @@
 
   function rendreDetail() {
     var cle = detailCle;
-    var fiche, exercice, estFutur, estAujourdhui, titre, theme, consigne, duree;
+    var fiche, exercice, estFutur, estAujourdhui, titre, theme, consigne, duree, origine, chapitre;
     if (!cle) {
       return;
     }
@@ -1428,7 +2650,19 @@
       titre = fiche.titre || (exercice ? chaine(exercice.titre) : "") || "Exercice non noté";
       theme = fiche.themeNom || (exercice ? chaine(exercice.themeNom) : "");
       duree = fiche.duree;
-      texte(el.detailExoLabel, "Exercice fait");
+      /* Jour coché depuis « Idées » ou « Apprendre » : exerciceParId ne connaît
+         pas ces dessins (exercice vaut null), la fiche du jour dit tout. */
+      origine = origineFiche(fiche);
+      if (origine === "idee") {
+        theme = theme || THEME_IDEE;
+        texte(el.detailExoLabel, "Idée dessinée");
+      } else if (origine === "guide") {
+        theme = theme || THEME_GUIDE;
+        chapitre = ficheChapitre(chapitreDeFiche(fiche));
+        texte(el.detailExoLabel, chapitre ? "Exercice du guide · chapitre " + chapitre.numero : "Exercice du guide");
+      } else {
+        texte(el.detailExoLabel, "Exercice fait");
+      }
     } else {
       if (L.calculerSerie(etat.jours, cleJour).jokers.indexOf(cle) !== -1) {
         texte(el.detailStatut, "Jour sans dessin, couvert par un joker : la série continue.");
@@ -1594,7 +2828,7 @@
 
   /* Le contenu du fichier n’est jamais affiché : seul un nombre de jours l’est. */
   function traiterImport(contenu) {
-    var objet, resultat, nombreJours, actuel;
+    var objet, resultat, nombreJours, actuel, favoris, chapitres, inventaire;
     if (contenu.charCodeAt(0) === 0xFEFF) {
       contenu = contenu.slice(1); /* marque d’ordre des octets en tête de fichier */
     }
@@ -1613,11 +2847,23 @@
     }
     nombreJours = L.totalJours(resultat.etat.jours);
     actuel = L.totalJours(etat.jours);
+    /* Favoris et avancement du guide ne sont cités que s’il y en a dans le fichier. */
+    favoris = resultat.etat.favoris.length;
+    chapitres = L.nombreChapitresFaits(resultat.etat);
+    inventaire = pluriel(nombreJours, "jour dessiné", "jours dessinés");
+    if (favoris > 0 && chapitres > 0) {
+      inventaire += ", " + pluriel(favoris, "idée en favori", "idées en favori") + " et " +
+        pluriel(chapitres, "exercice du guide fait", "exercices du guide faits");
+    } else if (favoris > 0) {
+      inventaire += " et " + pluriel(favoris, "idée en favori", "idées en favori");
+    } else if (chapitres > 0) {
+      inventaire += " et " + pluriel(chapitres, "exercice du guide fait", "exercices du guide faits");
+    }
     demanderConfirmation({
       titre: "Remplacer ta progression ?",
-      texte: "Ce fichier contient " + pluriel(nombreJours, "jour dessiné", "jours dessinés") +
+      texte: "Ce fichier contient " + inventaire +
         ". Ta progression actuelle (" + pluriel(actuel, "jour dessiné", "jours dessinés") +
-        ") et tes réglages seront remplacés par son contenu.",
+        "), tes favoris, ton avancement dans le guide et tes réglages seront remplacés par son contenu.",
       oui: "Remplacer",
       danger: false,
       retour: el.btnImporter
@@ -1680,6 +2926,15 @@
     minuteur.manuel = false;
     moisAffiche = null;
     palierJourCle = null;
+    palierLocal = null;
+    noteMinuit = null;
+    /* Les idées de la visite partent aussi : la prochaine ouverture de l’écran
+       « Idées » en tirera une nouvelle. */
+    idees.categorie = L.CLE_SURPRISE;
+    idees.courante = null;
+    idees.verrous = {};
+    idees.recentes = [];
+    idees.connues = {};
     montrer(el.bandeauIllisible, false);
     appliquerTheme();
     synchroniserDuree();
@@ -1692,7 +2947,8 @@
     demanderConfirmation({
       titre: "Tout effacer ?",
       texte: "Ta progression (" + pluriel(total, "jour dessiné", "jours dessinés") +
-        "), tes paliers et tes réglages seront supprimés de ce navigateur. C’est définitif : " +
+        "), tes paliers, tes idées gardées en favori, ton avancement dans le guide et tes réglages " +
+        "seront supprimés de ce navigateur. C’est définitif : " +
         "si tu veux en garder une trace, exporte d’abord ta progression.",
       oui: "Oui, tout effacer",
       danger: true,
@@ -1706,6 +2962,8 @@
 
   function rendreTout() {
     rendreAujourdhui();
+    rendreIdees();
+    rendreApprendre();
     rendreCalendrier();
     rendreReglages();
     if (detailCle) {
@@ -1719,11 +2977,13 @@
      ouverte (voir seanceOuverte), l’écran reste sur ce jour, pour que
      l’exercice ne change pas en pleine séance et que « C’est fait » crédite
      le bon jour. surFait, reinitialiserMinuteur et surChoixDuree rappellent
-     cette fonction quand la séance se clôt. */
-  function verifierJour() {
+     cette fonction quand la séance se clôt. sansAnnonce (vrai, et rien
+     d’autre) : l’appelant dit lui-même le saut (cocherDessinDuJour). */
+  function verifierJour(sansAnnonce) {
     var maintenant = L.aujourdHui();
     var ancien = cleJour;
     var etaitRetenu = jourRetenu;
+    var message;
     if (!maintenant || maintenant === cleJour) {
       jourRetenu = false;
       return;
@@ -1745,10 +3005,21 @@
     rendreTout();
     if (etaitRetenu) {
       /* L’écran était resté sur la veille le temps de la séance : on explique le saut. */
-      texte(el.minuteurMessage, ficheDuJour(ancien) ?
+      message = ficheDuJour(ancien) ?
         "Ta séance du " + L.formaterDate(ancien, false) + " est cochée. Minuit est passé : voici le nouveau jour." :
         "Minuit est passé : voici le nouveau jour. Si tu as dessiné le " + L.formaterDate(ancien, false) +
-          ", tu peux le cocher dans le calendrier.");
+          ", tu peux le cocher dans le calendrier.";
+      texte(el.minuteurMessage, message);
+      if (vueActive === "idees" || vueActive === "apprendre") {
+        /* La zone du minuteur est masquée : la note de l’écran affiché dit le
+           saut à sa place, et la zone d’annonce commune le fait entendre. */
+        noteMinuit = { jour: cleJour, texte: message };
+        rendreIdees();
+        rendreApprendre();
+        if (sansAnnonce !== true) {
+          annoncer(message);
+        }
+      }
     }
   }
 
@@ -1798,6 +3069,38 @@
         preparerAudio(false);
       }
     }, true);
+
+    /* Idées */
+    el.ideesCategories.addEventListener("change", function (evenement) {
+      if (evenement.target && evenement.target.name === "idees-categorie") {
+        surChoixCategorie(evenement.target.value);
+      }
+    });
+    el.ideeMorceaux.addEventListener("click", function (evenement) {
+      var bouton = remonter(evenement.target, "data-morceau", el.ideeMorceaux);
+      if (bouton) {
+        surVerrou(bouton);
+      }
+    });
+    el.btnIdeeNouvelle.addEventListener("click", surNouvelleIdee);
+    el.btnIdeeFavori.addEventListener("click", surFavoriIdee);
+    el.btnIdeeJour.addEventListener("click", surIdeeDuJour);
+    el.ideesRecentes.addEventListener("click", function (evenement) {
+      var bouton = remonter(evenement.target, "data-index", el.ideesRecentes);
+      if (bouton) {
+        surIdeeRecente(Number(bouton.getAttribute("data-index")));
+      }
+    });
+    el.ideesFavoris.addEventListener("click", function (evenement) {
+      var bouton = remonter(evenement.target, "data-action", el.ideesFavoris);
+      if (bouton) {
+        surActionFavori(bouton.getAttribute("data-action"), Number(bouton.getAttribute("data-index")));
+      }
+    });
+
+    /* Apprendre (les liens du sommaire et des chapitres passent par l’ancre) */
+    el.btnChapitreFait.addEventListener("click", surChapitreFait);
+    el.btnChapitreJour.addEventListener("click", surChapitreDuJour);
 
     /* Calendrier */
     el.btnMoisPrec.addEventListener("click", function () {
@@ -1907,7 +3210,7 @@
   }
 
   function demarrer() {
-    var finiPendantAbsence;
+    var finiPendantAbsence, route;
     collecterElements();
     etat = chargerEtat();
     cleJour = L.aujourdHui();
@@ -1921,7 +3224,9 @@
     }
     synchroniserDuree();
     brancher();
-    afficherVue(vueDepuisAncre(), false);
+    route = routeDepuisAncre();
+    chapitreActif = route.chapitre;
+    afficherVue(route.vue, false);
     rendreTout();
 
     if (stockage.cleCopie !== "") {

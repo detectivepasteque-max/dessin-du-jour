@@ -38,6 +38,14 @@
         <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg>
         <span class="nav-texte">Aujourd’hui</span>
       </a>
+      <a class="nav-lien" href="#idees" data-vue="idees">
+        <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/><path d="M9.5 19h5M10.5 21.5h3"/></svg>
+        <span class="nav-texte">Idées</span>
+      </a>
+      <a class="nav-lien" href="#apprendre" data-vue="apprendre">
+        <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 6.5C10.3 5.2 8 4.5 4.5 4.5v13c3.5 0 5.8.7 7.5 2 1.7-1.3 4-2 7.5-2v-13c-3.5 0-5.8.7-7.5 2z"/><path d="M12 6.5v13"/></svg>
+        <span class="nav-texte">Apprendre</span>
+      </a>
       <a class="nav-lien" href="#calendrier" data-vue="calendrier">
         <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
         <span class="nav-texte">Calendrier</span>
@@ -157,6 +165,7 @@
           </span>
           <span>C’est fait pour aujourd’hui</span>
         </p>
+        <p class="fait-dessin" id="fait-dessin" hidden></p>
         <p class="fait-encouragement" id="fait-encouragement"></p>
 
         <div class="fete" id="palier-jour" hidden></div>
@@ -177,7 +186,149 @@
   </section>
 
   <!-- ================================================================
-       2. CALENDRIER
+       2. IDÉES
+       ================================================================ -->
+  <section class="vue" id="vue-idees" aria-labelledby="titre-idees" hidden>
+
+    <header class="entete-jour">
+      <p class="surtitre">Pour relancer l’imagination</p>
+      <h1 class="vue-titre" id="titre-idees" tabindex="-1">Idées</h1>
+      <p class="vue-intro">En panne d’inspiration ? Tire une idée au hasard, garde les morceaux qui te plaisent et relance les autres. Ce n’est qu’un point de départ : libre à toi de la tordre dans tous les sens.</p>
+    </header>
+
+    <div class="carte" id="idees-absentes" hidden>
+      <h2>Pas d’idées à proposer</h2>
+      <p>Le générateur d’idées est introuvable : le fichier « idees.js » du dossier « donnees » est peut-être absent ou incomplet à côté de index.html.</p>
+      <p>Tes favoris ne sont pas perdus : ils restent enregistrés et reviendront avec ce fichier.</p>
+    </div>
+
+    <div id="idees-corps">
+
+      <fieldset class="champ" id="idees-categories">
+        <legend>Quel genre d’idée ?</legend>
+        <div class="choix" id="idees-categories-choix">
+          <label class="choix-option"><input type="radio" name="idees-categorie" value="surprise" checked><span>Surprise</span></label>
+        </div>
+        <p class="note" id="idees-categorie-description"></p>
+      </fieldset>
+
+      <section class="carte carte-accent" id="idee" aria-labelledby="idee-titre">
+        <h2 class="surtitre idee-surtitre" id="idee-titre">Ton idée</h2>
+        <p class="idee-texte" id="idee-texte" tabindex="-1"></p>
+        <ul class="idee-morceaux" id="idee-morceaux" role="list" aria-label="Les morceaux de cette idée"></ul>
+        <p class="note" id="idee-aide"></p>
+        <div class="actions idee-actions">
+          <button type="button" class="bouton" id="btn-idee-nouvelle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 5v5h-5"/><path d="M19.4 14.5a8 8 0 1 1-1.9-8.2L21 10"/></svg>
+            <span>Nouvelle idée</span>
+          </button>
+          <button type="button" class="bouton-secondaire bouton-bascule" id="btn-idee-favori" aria-pressed="false">Garder en favori</button>
+          <button type="button" class="bouton-secondaire" id="btn-idee-jour">C’est mon dessin du jour</button>
+        </div>
+        <p class="note-jour" id="idee-jour-note" tabindex="-1" hidden></p>
+        <div class="fete" id="idee-palier" hidden></div>
+      </section>
+
+      <section class="carte" aria-labelledby="idees-recentes-titre">
+        <h2 id="idees-recentes-titre">Tes dernières idées</h2>
+        <p class="note" id="idees-recentes-vide">Les idées que tu tires s’empilent ici le temps de ta visite, pour revenir à celle d’avant si elle te manque.</p>
+        <ul class="idees-liste idees-liste-recentes" id="idees-recentes" role="list"></ul>
+      </section>
+
+      <section class="carte" aria-labelledby="idees-favoris-titre">
+        <h2 id="idees-favoris-titre" tabindex="-1">Tes favoris</h2>
+        <p id="idees-favoris-vide">Rien ici pour l’instant, et c’est très bien. Quand une idée te fait envie, « Garder en favori » la met de côté pour un autre jour.</p>
+        <p class="note" id="idees-favoris-compte" hidden></p>
+        <ul class="idees-liste" id="idees-favoris" role="list"></ul>
+      </section>
+
+    </div>
+
+  </section>
+
+  <!-- ================================================================
+       3. APPRENDRE (sommaire du guide, puis un chapitre à la fois)
+       ================================================================ -->
+  <section class="vue" id="vue-apprendre" aria-labelledby="titre-apprendre" hidden>
+
+    <div id="guide-sommaire">
+
+      <header class="entete-jour">
+        <p class="surtitre">Le guide, pas à pas</p>
+        <h1 class="vue-titre" id="titre-apprendre" tabindex="-1">Dessiner d’imagination, de A à Z</h1>
+        <p class="vue-intro">Douze chapitres courts pour apprendre à dessiner sans modèle, du premier trait à l’image complète. Chacun se termine par un exercice sur papier. Avance à ton rythme, dans l’ordre ou en picorant : rien ne presse.</p>
+      </header>
+
+      <div class="carte" id="guide-absent" hidden>
+        <h2>Le guide est introuvable</h2>
+        <p>Les chapitres n’ont pas pu être chargés : les fichiers « guide-1.js », « guide-2.js » et « guide-3.js » du dossier « donnees » sont peut-être absents ou incomplets à côté de index.html.</p>
+        <p>Ton avancement n’est pas perdu : il reste enregistré et reviendra avec ces fichiers.</p>
+      </div>
+
+      <div id="guide-corps">
+
+        <section class="carte" aria-labelledby="guide-progression-titre">
+          <h2 class="visuellement-cache" id="guide-progression-titre">Ton avancement</h2>
+          <p class="guide-progression-texte" id="guide-progression-texte"></p>
+          <div class="barre" aria-hidden="true"><div class="barre-remplie" id="guide-barre"></div></div>
+          <p class="guide-progression-action"><a class="bouton" id="guide-reprendre" href="#apprendre"></a></p>
+          <p class="note" id="guide-termine" hidden>Tu as fait tous les exercices du guide. Les chapitres restent là : chacun se refait autant de fois que tu veux, avec un autre sujet.</p>
+        </section>
+
+        <div id="guide-parties"></div>
+
+      </div>
+
+    </div>
+
+    <article class="guide-chapitre" id="guide-chapitre" aria-labelledby="chapitre-titre" hidden>
+
+      <p class="chapitre-retour">
+        <a class="lien-retour" href="#apprendre">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+          <span>Sommaire</span>
+        </a>
+      </p>
+
+      <header class="entete-jour">
+        <p class="surtitre" id="chapitre-surtitre"></p>
+        <h1 class="vue-titre" id="chapitre-titre" tabindex="-1"></h1>
+        <p class="chapitre-resume" id="chapitre-resume"></p>
+      </header>
+
+      <div class="chapitre-corps" id="chapitre-corps"></div>
+
+      <!-- Le suivi est déplacé par app.js au bas de la carte « À toi » du chapitre affiché. -->
+      <div id="chapitre-suivi-repli">
+        <div class="chapitre-suivi" id="chapitre-suivi">
+          <div class="actions">
+            <button type="button" class="bouton-secondaire bouton-bascule" id="btn-chapitre-fait" aria-pressed="false">J’ai fait cet exercice</button>
+            <button type="button" class="bouton-secondaire" id="btn-chapitre-jour">C’est mon dessin du jour</button>
+          </div>
+          <p class="note" id="chapitre-fait-note"></p>
+          <p class="note-jour" id="chapitre-jour-note" tabindex="-1" hidden></p>
+          <div class="fete" id="chapitre-palier" hidden></div>
+        </div>
+      </div>
+
+      <nav class="chapitre-nav" aria-label="D’un chapitre à l’autre">
+        <a class="chapitre-nav-lien" id="chapitre-prec" href="#apprendre">
+          <span class="chapitre-nav-sens"><span aria-hidden="true">← </span>Chapitre précédent</span>
+          <span class="chapitre-nav-titre" id="chapitre-prec-titre"></span>
+        </a>
+        <a class="chapitre-nav-lien chapitre-nav-suivant" id="chapitre-suiv" href="#apprendre">
+          <span class="chapitre-nav-sens">Chapitre suivant<span aria-hidden="true"> →</span></span>
+          <span class="chapitre-nav-titre" id="chapitre-suiv-titre"></span>
+        </a>
+      </nav>
+      <p class="chapitre-retour"><a class="lien-retour" href="#apprendre">Retour au sommaire</a></p>
+
+    </article>
+
+  </section>
+
+  <!-- ================================================================
+       4. CALENDRIER
        ================================================================ -->
   <section class="vue" id="vue-calendrier" aria-labelledby="titre-calendrier" hidden>
 
@@ -240,7 +391,7 @@
   </section>
 
   <!-- ================================================================
-       3. RÉGLAGES
+       5. RÉGLAGES
        ================================================================ -->
   <section class="vue" id="vue-reglages" aria-labelledby="titre-reglages" hidden>
 
@@ -282,8 +433,8 @@
 
     <section class="carte" aria-labelledby="reglages-sauvegarde-titre">
       <h2 id="reglages-sauvegarde-titre">Sauvegarde</h2>
-      <p>Ta progression (jours dessinés, ressenti, réglages) vit uniquement dans ce navigateur, sur cet appareil. Rien n’est envoyé ailleurs, et tes dessins restent sur ton papier.</p>
-      <p>Si tu vides les données du navigateur ou si tu changes d’appareil, elle disparaît : un export de temps en temps sert de filet de sécurité.</p>
+      <p>Ta progression (jours dessinés, ressenti, idées gardées en favori, avancement dans le guide, réglages) vit uniquement dans ce navigateur, sur cet appareil. Rien n’est envoyé ailleurs, et tes dessins restent sur ton papier.</p>
+      <p>Si tu vides les données du navigateur ou si tu changes d’appareil, elle disparaît : un export de temps en temps sert de filet de sécurité. Le fichier exporté contient tout cela, favoris et avancement du guide compris, et l’import remet tout en place.</p>
       <div class="actions">
         <button type="button" class="bouton" id="btn-exporter">Exporter ma progression</button>
         <button type="button" class="bouton-secondaire" id="btn-importer">Importer une sauvegarde</button>
@@ -294,7 +445,7 @@
 
     <section class="carte" aria-labelledby="reglages-effacer-titre">
       <h2 id="reglages-effacer-titre">Repartir de zéro</h2>
-      <p>Supprime de ce navigateur tous les jours cochés, les paliers et les réglages. Une confirmation te sera demandée.</p>
+      <p>Supprime de ce navigateur tous les jours cochés, les paliers, les idées gardées en favori, l’avancement dans le guide et les réglages. Une confirmation te sera demandée.</p>
       <div class="actions">
         <button type="button" class="bouton-danger" id="btn-effacer">Tout effacer</button>
       </div>
@@ -351,6 +502,10 @@
 
 <script src="donnees/exercices-semaine.js"></script>
 <script src="donnees/exercices-weekend.js"></script>
+<script src="donnees/idees.js"></script>
+<script src="donnees/guide-1.js"></script>
+<script src="donnees/guide-2.js"></script>
+<script src="donnees/guide-3.js"></script>
 <script src="logique.js"></script>
 <script src="app.js"></script>
 </body>

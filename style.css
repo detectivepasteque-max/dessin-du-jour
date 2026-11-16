@@ -233,7 +233,7 @@ p.note { margin-bottom: .5rem; }
   align-items: center;
   justify-content: center;
   gap: .1rem;
-  padding: .3rem .25rem;
+  padding: .3rem 2px;
   border-radius: 10px;
   text-decoration: none;
   font-size: .78rem;
@@ -242,9 +242,31 @@ p.note { margin-bottom: .5rem; }
 .nav-lien:hover { color: var(--encre); background: var(--papier-2); }
 .nav-lien[aria-current="page"] { color: var(--accent-texte); font-weight: 700; }
 /* Repère de l’onglet actif qui ne repose pas que sur la couleur : un trait. */
-.nav-texte { padding-bottom: 2px; border-bottom: 2px solid transparent; }
+.nav-texte {
+  max-width: 100%;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  /* Filet de sécurité : un libellé ne déborde jamais de son onglet. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .nav-lien[aria-current="page"] .nav-texte { border-bottom-color: currentColor; }
 .nav-icone { display: block; }
+/* Barre en bas : elle touche les bords de l’écran, le cadre de focus est donc
+   dessiné à l’intérieur de l’onglet pour rester visible en entier. */
+.nav-lien:focus-visible { outline-offset: -3px; }
+/* Cinq onglets : sur les écrans étroits, les libellés rapetissent un peu pour
+   tenir en entier (« Aujourd’hui » est le plus long), jusqu’à 320 px. */
+@media (max-width: 479px) {
+  .nav-lien { font-size: .72rem; }
+}
+@media (max-width: 359px) {
+  .navigation { padding-left: 2px; padding-right: 2px; }
+  .nav-lien { padding-left: 1px; padding-right: 1px; font-size: .68rem; letter-spacing: -.01em; }
+  /* Onglets très étroits : un cadre plus fin, pour ne pas mordre sur le libellé. */
+  .nav-lien:focus-visible { outline-width: 2px; outline-offset: -2px; }
+}
 
 .contenu {
   max-width: 46rem;
@@ -261,21 +283,26 @@ p.note { margin-bottom: .5rem; }
     position: static;
     margin-left: auto;
     padding: 0;
-    gap: .25rem;
+    gap: .15rem;
+    /* Si la place venait à manquer (très gros caractères), les onglets
+       passent à la ligne au lieu de déborder. */
+    flex-wrap: wrap;
+    justify-content: flex-end;
     background: none;
     border: 0;
   }
   .nav-lien {
     flex: 0 0 auto;
     flex-direction: row;
-    gap: .45rem;
     min-height: 44px;
-    padding: .4rem .9rem;
+    padding: .4rem .7rem;
     border-radius: 999px;
-    font-size: .95rem;
+    font-size: .92rem;
   }
   .nav-lien[aria-current="page"] { background: var(--accent-doux); }
-  .nav-icone { width: 20px; height: 20px; }
+  .nav-lien:focus-visible { outline-offset: 2px; }
+  /* Cinq onglets à côté du nom de l’appli : en haut, le libellé seul suffit. */
+  .nav-icone { display: none; }
   .contenu { padding: 1.75rem 1.25rem 4rem; }
   h1 { font-size: 2rem; }
 }
@@ -327,6 +354,16 @@ p.note { margin-bottom: .5rem; }
 }
 .bouton-secondaire:disabled:hover { border-color: var(--ligne-forte); color: var(--encre); }
 .bouton-petit { font-size: .9rem; padding: .4rem .95rem; }
+
+/* Bouton à bascule (aria-pressed) : enfoncé, il est plein et porte une coche. */
+.bouton-bascule[aria-pressed="true"] {
+  background: var(--vert);
+  border-color: var(--vert);
+  color: var(--sur-vert);
+  font-weight: 600;
+}
+.bouton-bascule[aria-pressed="true"]::before { content: "✓"; }
+.bouton-bascule[aria-pressed="true"]:hover { border-color: var(--vert); color: var(--sur-vert); filter: brightness(.93); }
 
 .bouton-grand {
   width: 100%;
@@ -450,6 +487,7 @@ p.note { margin-bottom: .5rem; }
 .vue { display: block; }
 .entete-jour { margin-bottom: 1rem; }
 .vue-titre { margin-bottom: .35rem; }
+.vue-intro { max-width: 36rem; margin: .5rem 0 0; color: var(--encre-2); }
 .theme-jour { margin: 0 0 .2rem; font-size: 1.05rem; }
 .theme-jour strong { color: var(--accent-texte); }
 .theme-description { margin: 0; color: var(--encre-2); font-size: .95rem; }
@@ -591,6 +629,7 @@ p.note { margin-bottom: .5rem; }
   60% { transform: scale(1.12); opacity: 1; }
   to { transform: scale(1); }
 }
+.fait-dessin { margin: 0 0 .5rem; font-weight: 600; }
 .fait-encouragement { margin-bottom: 1rem; }
 
 .ressenti { margin: 0 0 .6rem; }
@@ -780,7 +819,358 @@ button.jour:focus-visible .jour-pastille { outline: 3px solid var(--focus); outl
 .palier.est-prochain .palier-detail { color: var(--accent-texte); font-weight: 600; }
 
 /* --------------------------------------------------------------------------
-   7. Fenêtres de dialogue
+   7. Idées
+   -------------------------------------------------------------------------- */
+.idee-surtitre { font-family: var(--sans); line-height: 1.55; }
+.idee-texte {
+  margin: 0 0 1rem;
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+/* Chaque nouvelle idée arrive dans un élément neuf : l’animation repart. */
+.idee-apparition { display: block; animation: idee-apparait .35s ease-out; }
+@keyframes idee-apparait {
+  from { opacity: 0; transform: translateY(.4rem); }
+  to { opacity: 1; transform: none; }
+}
+@media (min-width: 720px) {
+  .idee-texte { font-size: 1.8rem; }
+}
+
+/* Morceaux de l’idée : chaque pastille est un bouton « garder ». Gardé, le
+   morceau change de bord (plein au lieu de tirets), de cadenas et de graisse. */
+.idee-morceaux { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 .6rem; padding: 0; list-style: none; }
+.idee-morceaux li { max-width: 100%; }
+.idee-morceau {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  max-width: 100%;
+  min-height: 44px;
+  padding: .3rem .95rem .3rem .7rem;
+  border: 2px dashed var(--ligne-forte);
+  border-radius: 22px;
+  background: var(--carte);
+  color: var(--encre);
+  line-height: 1.25;
+  text-align: left;
+  transition: background-color .15s, border-color .15s;
+}
+.idee-morceau:hover { border-color: var(--accent); }
+.idee-morceau svg { color: var(--encre-2); }
+.idee-morceau .cadenas-ferme { display: none; }
+.idee-morceau[aria-pressed="true"] { border: 2px solid var(--vert); background: var(--vert-doux); font-weight: 600; }
+.idee-morceau[aria-pressed="true"] svg { color: var(--vert-texte); }
+.idee-morceau[aria-pressed="true"] .cadenas-ferme { display: block; }
+.idee-morceau[aria-pressed="true"] .cadenas-ouvert { display: none; }
+.idee-morceau-corps { display: flex; flex-direction: column; min-width: 0; }
+.idee-morceau-texte { overflow-wrap: anywhere; }
+.idee-morceau-nom {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--encre-2);
+}
+.idee-actions { margin-top: 1rem; }
+
+/* Note qui remplace « C’est mon dessin du jour » quand le jour est coché. */
+.note-jour {
+  margin: .9rem 0 0;
+  padding: .65rem .85rem;
+  border-left: 4px solid var(--vert);
+  border-radius: 8px;
+  background: var(--vert-doux);
+}
+.note-jour + .fete { margin: .9rem 0 0; }
+
+/* Dernières idées et favoris */
+.idees-liste { margin: 0; padding: 0; list-style: none; }
+.idees-liste-recentes li + li { margin-top: .45rem; }
+.idees-recente {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: .45rem .8rem;
+  border: 1px solid var(--ligne-forte);
+  border-radius: 10px;
+  background: var(--papier);
+  color: var(--encre);
+  line-height: 1.3;
+  text-align: left;
+}
+.idees-recente:hover { border-color: var(--accent); }
+.idees-recente-texte { font-family: var(--serif); font-size: 1.05rem; }
+.idees-recente-categorie {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--encre-2);
+}
+.idees-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .3rem .8rem;
+  padding: .55rem 0;
+  border-top: 1px solid var(--ligne);
+}
+.idees-item:first-child { padding-top: 0; border-top: 0; }
+.idees-item:last-child { padding-bottom: 0; }
+.idees-item-texte { flex: 1 1 14rem; min-width: 0; font-family: var(--serif); font-size: 1.05rem; }
+.idees-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+
+/* --------------------------------------------------------------------------
+   8. Apprendre : sommaire du guide
+   -------------------------------------------------------------------------- */
+.guide-progression-texte { margin: 0 0 .5rem; font-family: var(--serif); font-size: 1.25rem; font-weight: 600; }
+.barre {
+  height: 14px;
+  margin: 0 0 1rem;
+  border: 1px solid var(--ligne-forte);
+  border-radius: 999px;
+  background: var(--papier);
+  overflow: hidden;
+}
+.barre-remplie { width: 0; height: 100%; background: var(--vert); transition: width .3s; }
+.guide-progression-action { margin: 0; }
+
+.guide-partie { margin-bottom: 1.5rem; }
+.guide-partie h2 { margin-bottom: .7rem; }
+.guide-partie-numero {
+  display: block;
+  margin-bottom: .2rem;
+  font-family: var(--sans);
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  line-height: 1.55;
+  text-transform: uppercase;
+  color: var(--encre-2);
+}
+.guide-liste { margin: 0; padding: 0; list-style: none; }
+.guide-item + .guide-item { margin-top: .6rem; }
+.guide-lien {
+  display: flex;
+  align-items: flex-start;
+  gap: .85rem;
+  min-height: 44px;
+  padding: .85rem 1rem;
+  border: 1px solid var(--ligne);
+  border-radius: var(--rayon);
+  background: var(--carte);
+  box-shadow: var(--ombre);
+  color: var(--encre);
+  text-decoration: none;
+}
+.guide-lien:hover { border-color: var(--accent); }
+.guide-numero {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px dashed var(--ligne-forte);
+  border-radius: 50%;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.guide-item-corps { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.guide-item-titre {
+  font-family: var(--serif);
+  font-size: 1.12rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-decoration: underline;
+  text-decoration-color: var(--ligne-forte);
+  text-underline-offset: 3px;
+}
+.guide-lien:hover .guide-item-titre { color: var(--accent-texte); text-decoration-color: currentColor; }
+.guide-item-resume { font-size: .93rem; color: var(--encre-2); }
+.guide-item-etat { font-size: .88rem; font-weight: 700; color: var(--vert-texte); }
+/* Chapitre fait : pastille pleine, en plus de la mention « Exercice fait ». */
+.guide-item.est-fait .guide-numero { border: 0; background: var(--vert); color: var(--sur-vert); }
+
+/* --------------------------------------------------------------------------
+   9. Apprendre : un chapitre
+   Colonne de lecture étroite (65 caractères environ par ligne au plus).
+   -------------------------------------------------------------------------- */
+.guide-chapitre { max-width: 33rem; margin: 0 auto; }
+.chapitre-retour { margin: 0 0 .6rem; }
+.lien-retour {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 44px;
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
+.chapitre-numero {
+  display: block;
+  margin-bottom: .35rem;
+  font-family: var(--sans);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.55;
+  text-transform: uppercase;
+  color: var(--accent-texte);
+}
+.chapitre-nom { display: block; }
+.chapitre-resume { margin: .6rem 0 0; font-family: var(--serif); font-size: 1.15rem; line-height: 1.5; color: var(--encre-2); }
+
+.chapitre-corps { margin-top: 1.5rem; font-size: 1.05rem; line-height: 1.7; }
+.chapitre-corps > p { margin: 0 0 1.05rem; }
+.chapitre-intertitre { margin: 2.1rem 0 .7rem; font-size: 1.4rem; }
+.chapitre-liste, .chapitre-etapes { margin: 0 0 1.1rem; padding-left: 1.4rem; }
+.chapitre-liste li, .chapitre-etapes li { margin-bottom: .45rem; padding-left: .2rem; }
+.chapitre-liste li::marker { color: var(--accent-texte); }
+.chapitre-etapes li::marker { color: var(--accent-texte); font-weight: 700; }
+
+/* Encadrés. Chacun a son libellé et son icône ; la couleur et le bord ne font
+   que les doubler (astuce : bord plein ; piège : bord en tirets). */
+.encadre {
+  margin: 1.4rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid var(--ligne-forte);
+  border-left-width: 5px;
+  border-radius: var(--rayon);
+  background: var(--carte);
+}
+.encadre > :last-child { margin-bottom: 0; }
+.encadre p { margin: 0 0 .6rem; }
+.encadre .encadre-titre {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: 0 0 .45rem;
+  font-family: var(--sans);
+  font-size: .82rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.encadre-astuce { border-color: var(--vert); background: linear-gradient(var(--vert-doux), var(--vert-doux)), var(--carte); }
+.encadre-astuce .encadre-titre { color: var(--vert-texte); }
+.encadre-piege {
+  border-color: var(--ocre);
+  border-style: dashed;
+  border-left-style: solid;
+  background: linear-gradient(var(--ocre-doux), var(--ocre-doux)), var(--carte);
+}
+.encadre-piege .encadre-titre { color: var(--ocre-texte); }
+.encadre-retenir { border-color: var(--accent); background: linear-gradient(var(--accent-doux), var(--accent-doux)), var(--carte); }
+.encadre-retenir .encadre-titre { color: var(--accent-texte); }
+
+/* Carte « À toi » et suivi de l’exercice */
+.chapitre-exercice { margin: 1.8rem 0; }
+.chapitre-exercice h2 { font-size: 1.45rem; }
+.chapitre-suivi { margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--ligne); }
+.chapitre-suivi .note { margin: .7rem 0 0; }
+#chapitre-suivi-repli > .chapitre-suivi { margin-bottom: 1.5rem; }
+
+/* Schémas : <figure> + <svg> construits par app.js. Le dessin est une feuille
+   de papier clair à l’encre sombre dans les deux thèmes : ses couleurs sont
+   fixes (variables --schema-…), pour que les aplats d’ombre restent plus
+   foncés que le papier. Le cadre et la légende, eux, suivent le thème. Les
+   traits gardent leur épaisseur à l’écran quelle que soit la taille du dessin
+   (non-scaling-stroke). */
+.schema {
+  max-width: 26rem;
+  margin: 1.5rem auto;
+  padding: .6rem .6rem .75rem;
+  border: 1px solid var(--ligne);
+  border-radius: var(--rayon);
+  background: var(--carte);
+}
+.schema-dessin {
+  --schema-papier: #fbf7ee;
+  --schema-encre: #2a2622;
+  /* Plus sombre que --ligne-forte : les traits légers et les pointillés
+     restent à plus de 3:1 quand ils passent sur un aplat (surligne, ombre). */
+  --schema-leger: #7d7263;
+  --schema-accent: #b9553a;
+  --schema-accent-texte: #a3462d;
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: var(--schema-papier);
+}
+/* Couleurs forcées (contraste élevé du système) : le dessin garde son papier
+   et son encre, étiquettes comprises. */
+.schema-dessin, .schema-dessin text { forced-color-adjust: none; }
+.schema-legende { margin-top: .5rem; padding: 0 .3rem; font-size: .9rem; line-height: 1.5; color: var(--encre-2); }
+.schema-dessin line, .schema-dessin rect, .schema-dessin circle, .schema-dessin ellipse,
+.schema-dessin polyline, .schema-dessin polygon, .schema-dessin path {
+  vector-effect: non-scaling-stroke;
+}
+.schema-trait { fill: none; stroke: var(--schema-encre); stroke-width: 1.75px; stroke-linecap: round; stroke-linejoin: round; }
+.schema-leger { fill: none; stroke: var(--schema-leger); stroke-width: 1.2px; stroke-linecap: round; stroke-linejoin: round; }
+.schema-pointille { fill: none; stroke: var(--schema-leger); stroke-width: 1.2px; stroke-dasharray: 4 4; }
+.schema-accent { fill: none; stroke: var(--schema-accent); stroke-width: 2.25px; stroke-linecap: round; stroke-linejoin: round; }
+.schema-fleche { fill: none; stroke: var(--schema-accent); stroke-width: 2px; stroke-linejoin: round; }
+.schema-pointe { fill: var(--schema-accent); stroke: none; }
+.schema-plein { fill: var(--schema-encre); stroke: none; }
+.schema-ombre { fill: var(--schema-encre); fill-opacity: .14; stroke: none; }
+.schema-ombre-forte { fill: var(--schema-encre); fill-opacity: .32; stroke: none; }
+.schema-surligne { fill: var(--schema-accent); fill-opacity: .16; stroke: none; }
+.schema-etiquette, .schema-etiquette-accent {
+  font-family: var(--sans);
+  font-size: 12px;
+  stroke: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.schema-etiquette { fill: var(--schema-encre); }
+.schema-etiquette-accent { fill: var(--schema-accent-texte); font-weight: 700; }
+/* Très petit écran : le schéma va d’un bord à l’autre de la page, pour que
+   ses étiquettes restent lisibles. */
+@media (max-width: 359px) {
+  .schema {
+    margin-left: -.75rem;
+    margin-right: -.75rem;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+  .schema-legende { padding: 0 .6rem; }
+}
+
+/* Liens vers les chapitres voisins */
+.chapitre-nav { display: flex; flex-wrap: wrap; gap: .6rem; margin: 2rem 0 .6rem; }
+.chapitre-nav-lien {
+  flex: 1 1 13rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: .7rem .95rem;
+  border: 1px solid var(--ligne-forte);
+  border-radius: var(--rayon);
+  background: var(--carte);
+  color: var(--encre);
+  text-decoration: none;
+}
+.chapitre-nav-lien:hover { border-color: var(--accent); }
+.chapitre-nav-suivant { text-align: right; }
+.chapitre-nav-sens { font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-texte); }
+.chapitre-nav-titre { font-family: var(--serif); font-size: 1.05rem; font-weight: 600; line-height: 1.3; }
+
+/* --------------------------------------------------------------------------
+   10. Fenêtres de dialogue
    -------------------------------------------------------------------------- */
 .dialogue {
   width: calc(100vw - 2rem);
@@ -826,13 +1216,57 @@ dialog:not([open]) { display: none; }
 .voile { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50; background: var(--voile); }
 
 /* --------------------------------------------------------------------------
-   8. Mouvement réduit
+   11. Mouvement réduit
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
+  /* L’idée s’affiche d’un coup, sans glissement. */
+  .idee-apparition { animation: none; }
   *, *::before, *::after {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* --------------------------------------------------------------------------
+   12. Impression
+   Palette claire quel que soit le thème (les fonds ne sont pas imprimés), et
+   pas de navigation ni de boutons de suivi sur le papier. Les sélecteurs de
+   thème sont répétés pour passer après les blocs sombres du début.
+   -------------------------------------------------------------------------- */
+@media print {
+  :root, :root[data-theme="auto"], :root[data-theme="sombre"] {
+    color-scheme: light;
+    --papier: #ffffff;
+    --papier-2: #f2efe8;
+    --carte: #ffffff;
+    --encre: #2a2622;
+    --encre-2: #5e564c;
+    --ligne: #d9cfbd;
+    --ligne-forte: #8f8474;
+    --accent: #b9553a;
+    --accent-texte: #a3462d;
+    --accent-doux: rgba(185, 85, 58, .12);
+    --sur-accent: #ffffff;
+    --vert: #587a66;
+    --vert-texte: #46654f;
+    --vert-doux: rgba(88, 122, 102, .15);
+    --sur-vert: #ffffff;
+    --ocre: #c69a3c;
+    --ocre-texte: #7d5f17;
+    --ocre-doux: rgba(198, 154, 60, .18);
+    --danger: #9a3b2a;
+    --sur-danger: #ffffff;
+    --focus: #2a2622;
+    --ombre: none;
+    --grain: transparent;
+  }
+  body { background: none; }
+  .lien-evitement, .navigation, .chapitre-retour, .chapitre-nav, .chapitre-suivi,
+  .idee-actions, #guide-reprendre { display: none !important; }
+  .entete { position: static; border-bottom: 0; }
+  .contenu { max-width: none; padding: 0; }
+  .carte, .encadre, .schema { box-shadow: none; break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
 }

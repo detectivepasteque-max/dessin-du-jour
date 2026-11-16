@@ -29,12 +29,16 @@
 <main>
   <h1>Dessin du jour — tests de la logique</h1>
   <p id="bilan" class="bilan">Tests en cours…</p>
-  <p class="note">Cette page charge les données réelles et logique.js, puis vérifie leur comportement. Rien n’est enregistré.</p>
+  <p class="note">Cette page charge les données réelles (exercices, idées, guide) et logique.js, puis vérifie leur comportement. Rien n’est enregistré.</p>
   <div id="resultats"></div>
 </main>
 
 <script src="donnees/exercices-semaine.js"></script>
 <script src="donnees/exercices-weekend.js"></script>
+<script src="donnees/idees.js"></script>
+<script src="donnees/guide-1.js"></script>
+<script src="donnees/guide-2.js"></script>
+<script src="donnees/guide-3.js"></script>
 <script src="logique.js"></script>
 <script>
 (function () {
@@ -1621,7 +1625,9 @@
       jours: {},
       tirage: { date: null, n: 0 },
       reglages: { duree: "auto", theme: "auto", son: true },
-      paliersVus: []
+      paliersVus: [],
+      favoris: [],
+      guide: { faits: {} }
     });
   });
 
@@ -1631,8 +1637,12 @@
     a.jours["2026-03-09"] = {};
     a.reglages.duree = 30;
     a.paliersVus.push(1);
+    a.favoris.push({ texte: "Une idée", categorieCle: "lieu", ajouteLe: "" });
+    a.guide.faits.g01 = "2026-03-09";
     verifier(a !== b);
     pareil(b, L.etatInitial());
+    pareil(L.etatInitial().favoris, []);
+    pareil(L.etatInitial().guide, { faits: {} });
   });
 
   test("validerEtat accepte un état valide et le rend à l’identique", function () {
@@ -1646,12 +1656,18 @@
       },
       tirage: { date: "2026-03-14", n: 2 },
       reglages: { duree: 30, theme: "sombre", son: false },
-      paliersVus: [1, 3]
+      paliersVus: [1, 3],
+      favoris: [
+        { texte: "Un phare en pleine tempête", categorieCle: "lieu", ajouteLe: "2026-03-14T09:10:00.000Z" },
+        { texte: "Une théière qui rêve de voyager", categorieCle: "objet", ajouteLe: "2026-03-10T20:00:00.000Z" }
+      ],
+      guide: { faits: { g01: "2026-03-09", g02: "2026-03-14" } }
     };
     var r = L.validerEtat(etat);
     egal(r.ok, true);
     pareil(r.etat, etat);
     verifier(r.etat !== etat && r.etat.jours !== etat.jours, "l’état rendu doit être un nouvel objet");
+    verifier(r.etat.favoris !== etat.favoris && r.etat.guide !== etat.guide, "favoris et guide doivent être de nouveaux objets");
   });
 
   test("validerEtat accepte l’état initial", function () {
@@ -1756,7 +1772,7 @@
     egal(r.etat.jours.pollue, undefined);
     egal(r.etat.jours["2026-03-09"].pollue, undefined);
     egal(r.etat.reglages.pollue, undefined);
-    pareil(Object.keys(r.etat).sort(), ["jours", "paliersVus", "reglages", "tirage", "version"]);
+    pareil(Object.keys(r.etat).sort(), ["favoris", "guide", "jours", "paliersVus", "reglages", "tirage", "version"]);
     pareil(Object.keys(r.etat.jours), ["2026-03-09"]);
     pareil(Object.keys(r.etat.jours["2026-03-09"]).sort(), ["duree", "exerciceId", "faitLe", "ressenti", "themeNom", "titre"]);
     egal(r.etat.jours["2026-03-09"].titre, "ok");
@@ -1778,7 +1794,7 @@
       reglages: { duree: 15, langue: "en" }, tirage: { date: "2026-03-09", n: 1, extra: true }
     });
     egal(r.ok, true);
-    pareil(Object.keys(r.etat).sort(), ["jours", "paliersVus", "reglages", "tirage", "version"]);
+    pareil(Object.keys(r.etat).sort(), ["favoris", "guide", "jours", "paliersVus", "reglages", "tirage", "version"]);
     pareil(Object.keys(r.etat.jours["2026-03-09"]).sort(), ["duree", "exerciceId", "faitLe", "ressenti", "themeNom", "titre"]);
     pareil(r.etat.reglages, { duree: 15, theme: "auto", son: true });
     pareil(r.etat.tirage, { date: "2026-03-09", n: 1 });
@@ -2071,6 +2087,2034 @@
   });
 
   /* ================================================================== */
+  /* Aides pour les idées, le guide et les schémas                       */
+  /* ================================================================== */
+
+  /* Remplace temporairement DDJ.idees, le temps d’une fonction. */
+  function avecIdees(idees, fn) {
+    var avant = DDJ.idees;
+    DDJ.idees = idees;
+    try {
+      return fn();
+    } finally {
+      DDJ.idees = avant;
+    }
+  }
+
+  /* Remplace temporairement DDJ.guide, le temps d’une fonction. */
+  function avecGuide(guide, fn) {
+    var avant = DDJ.guide;
+    DDJ.guide = guide;
+    try {
+      return fn();
+    } finally {
+      DDJ.guide = avant;
+    }
+  }
+
+  /* Aléa déterministe : rend les valeurs de la suite, en boucle, et compte ses appels. */
+  function suite(valeurs) {
+    var f = function () {
+      var v = valeurs[f.appels % valeurs.length];
+      f.appels++;
+      return v;
+    };
+    f.appels = 0;
+    return f;
+  }
+
+  /* Texte JSON écrit avec des apostrophes droites à la place des guillemets. */
+  function json(texte) {
+    return JSON.parse(texte.replace(/'/g, String.fromCharCode(34)));
+  }
+
+  function ideesFactices() {
+    return {
+      categories: [
+        {
+          cle: "personnage", nom: "Personnage", description: "Quelqu’un à inventer.", gabarit: "{qui} {quoi} {ou}",
+          morceaux: [
+            { cle: "qui", nom: "Qui", mots: ["un robot", "une sorcière", "un facteur"] },
+            { cle: "quoi", nom: "Quoi", mots: ["qui fait la sieste", "qui danse"] },
+            { cle: "ou", nom: "Où", mots: ["dans une gare", "sur un toit", "au marché", "sous la pluie"] }
+          ]
+        },
+        {
+          cle: "lieu", nom: "Lieu", description: "Un endroit à imaginer.", gabarit: "{endroit}, {moment}",
+          morceaux: [
+            { cle: "endroit", nom: "Endroit", mots: ["une île", "un phare"] },
+            { cle: "moment", nom: "Moment", mots: ["à l’aube", "la nuit", "en hiver"] }
+          ]
+        },
+        {
+          cle: "objet", nom: "Objet", description: "Une chose toute simple.", gabarit: "{chose}",
+          morceaux: [
+            { cle: "chose", nom: "Chose", mots: ["une théière"] }
+          ]
+        }
+      ]
+    };
+  }
+
+  var IDEE_ROBOT = "Un robot qui fait la sieste dans une gare";
+
+  function chapitreFactice(numero, partie) {
+    return {
+      id: "g" + (numero < 10 ? "0" : "") + numero,
+      numero: numero,
+      partie: partie,
+      titre: "Chapitre " + numero,
+      resume: "Résumé du chapitre " + numero + ".",
+      blocs: [
+        { type: "texte", contenu: "Un paragraphe." },
+        {
+          type: "schema", legende: "Un carré.", alt: "Un carré avec son nom en dessous.", largeur: 320, hauteur: 120,
+          formes: [
+            ["rect", { x: 20, y: 20, width: 60, height: 60, classe: "trait" }],
+            ["text", { x: 50, y: 100, classe: "etiquette", ancre: "middle" }, "carré"]
+          ]
+        },
+        { type: "retenir", elements: ["Un.", "Deux.", "Trois."] }
+      ]
+    };
+  }
+
+  /* Quatre chapitres rangés dans le désordre, deux parties dans le désordre. */
+  function guideFactice() {
+    return {
+      parties: [{ numero: 2, titre: "Deuxième partie" }, { numero: 1, titre: "Première partie" }],
+      chapitres: [chapitreFactice(3, 2), chapitreFactice(1, 1), chapitreFactice(4, 2), chapitreFactice(2, 1)]
+    };
+  }
+
+  function idsDe(chapitres) {
+    var r = [];
+    var i;
+    for (i = 0; i < chapitres.length; i++) {
+      r.push(chapitres[i].id);
+    }
+    return r;
+  }
+
+  /* Une forme valide par balise, dans un cadre de 320 × 160. */
+  function formesValides() {
+    return {
+      line: ["line", { x1: 10, y1: 10, x2: 100, y2: 80, classe: "trait" }],
+      rect: ["rect", { x: 20, y: 20, width: 100, height: 60, rx: 4, ry: 4, classe: "ombre" }],
+      circle: ["circle", { cx: 160, cy: 80, r: 40, classe: "accent" }],
+      ellipse: ["ellipse", { cx: 160, cy: 80, rx: 60, ry: 20, classe: "leger" }],
+      polyline: ["polyline", { points: "10,10 50,40 90,10", classe: "pointille" }],
+      polygon: ["polygon", { points: "10,10 50,40 90,10", classe: "plein" }],
+      path: ["path", { d: "M10 80 Q 95 10 180 80", classe: "fleche" }],
+      text: ["text", { x: 160, y: 150, classe: "etiquette", ancre: "middle" }, "ligne d’horizon"]
+    };
+  }
+
+  /* Copie d’une forme valide, avec des attributs changés (undefined = retiré). */
+  function variante(balise, modifs) {
+    var f = formesValides()[balise];
+    var nom;
+    for (nom in modifs) {
+      if (Object.prototype.hasOwnProperty.call(modifs, nom)) {
+        if (modifs[nom] === undefined) {
+          delete f[1][nom];
+        } else {
+          f[1][nom] = modifs[nom];
+        }
+      }
+    }
+    return f;
+  }
+
+  function accepte(forme, contexte) {
+    var r = L.validerForme(forme, 320, 160);
+    verifier(r && r.ok === true, (contexte || stable(forme)) + " devrait être acceptée : " + (r ? r.erreur : r));
+  }
+
+  function refuse(forme, contexte) {
+    var r = L.validerForme(forme, 320, 160);
+    verifier(r && r.ok === false, (contexte || stable(forme)) + " devrait être refusée");
+    verifier(typeof r.erreur === "string" && r.erreur.length > 10, "message d’erreur manquant pour " + (contexte || stable(forme)));
+  }
+
+  function schemaFactice() {
+    return {
+      type: "schema",
+      legende: "Un cube posé sur le sol.",
+      alt: "Un cube vu de trois quarts, avec une flèche vers la ligne d’horizon.",
+      largeur: 320,
+      hauteur: 160,
+      formes: [
+        ["rect", { x: 100, y: 50, width: 80, height: 80, classe: "ombre" }],
+        ["rect", { x: 100, y: 50, width: 80, height: 80, classe: "trait" }],
+        ["line", { x1: 20, y1: 40, x2: 300, y2: 40, classe: "pointille" }],
+        ["path", { d: "M 230 100 Q 250 70 240 46", classe: "fleche" }],
+        ["text", { x: 300, y: 30, classe: "etiquette-accent", ancre: "end" }, "ligne d’horizon"]
+      ]
+    };
+  }
+
+  function schemaRefuse(bloc, contexte) {
+    var r = L.validerSchema(bloc);
+    verifier(r && r.ok === false, contexte + " : le schéma devrait être refusé");
+    verifier(typeof r.erreur === "string" && r.erreur.length > 10, contexte + " : message d’erreur manquant");
+    return r.erreur;
+  }
+
+  /* ================================================================== */
+  groupe("Idées (données factices)");
+  /* ================================================================== */
+
+  test("categoriesIdees rend des copies { cle, nom, description } dans l’ordre des données", function () {
+    var donnees = ideesFactices();
+    avecIdees(donnees, function () {
+      var c = L.categoriesIdees();
+      pareil(c, [
+        { cle: "personnage", nom: "Personnage", description: "Quelqu’un à inventer." },
+        { cle: "lieu", nom: "Lieu", description: "Un endroit à imaginer." },
+        { cle: "objet", nom: "Objet", description: "Une chose toute simple." }
+      ]);
+      c[0].nom = "Modifié";
+      c.pop();
+      egal(L.categoriesIdees().length, 3, "la liste rendue est une copie");
+      egal(L.categoriesIdees()[0].nom, "Personnage", "les objets rendus sont des copies");
+      egal(donnees.categories[0].nom, "Personnage", "les données ont été modifiées");
+    });
+  });
+
+  test("categoriesIdees rend [] si les données manquent ou sont illisibles", function () {
+    var mauvaises = [undefined, null, {}, [], "idees", 42, { categories: null }, { categories: "toutes" }, { categories: {} }];
+    var i;
+    function vide() {
+      pareil(L.categoriesIdees(), [], "données n° " + i);
+    }
+    for (i = 0; i < mauvaises.length; i++) {
+      avecIdees(mauvaises[i], vide);
+    }
+  });
+
+  test("une catégorie inutilisable (sans clé, sans morceau, morceau sans mot) est écartée", function () {
+    var donnees = ideesFactices();
+    donnees.categories.push(null);
+    donnees.categories.push({ cle: "", nom: "Sans clé", morceaux: [{ cle: "a", mots: ["x"] }] });
+    donnees.categories.push({ cle: "vide", nom: "Sans morceau", gabarit: "", morceaux: [] });
+    donnees.categories.push({ cle: "creuse", nom: "Morceau sans mot", gabarit: "{a}", morceaux: [{ cle: "a", mots: [] }] });
+    donnees.categories.push({ cle: "bancale", nom: "Morceau sans clé", gabarit: "{a}", morceaux: [{ mots: ["x"] }] });
+    donnees.categories.push({ cle: "texte", nom: "Morceaux en texte", gabarit: "{a}", morceaux: "a" });
+    avecIdees(donnees, function () {
+      egal(L.categoriesIdees().length, 3);
+      egal(L.genererIdee("vide", { alea: suite([0]) }), null);
+      egal(L.genererIdee("creuse", { alea: suite([0]) }), null);
+      egal(L.genererIdee("bancale", { alea: suite([0]) }), null);
+      egal(L.genererIdee("texte", { alea: suite([0]) }), null);
+      egal(L.ideeDepuisIndex("creuse", { a: 0 }), null);
+    });
+  });
+
+  test("exemple du cahier des charges : « Un robot qui fait la sieste dans une gare »", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0]);
+      pareil(L.genererIdee("personnage", { alea: alea }), {
+        categorieCle: "personnage",
+        categorieNom: "Personnage",
+        texte: "Un robot qui fait la sieste dans une gare",
+        morceaux: [
+          { cle: "qui", nom: "Qui", index: 0, texte: "un robot" },
+          { cle: "quoi", nom: "Quoi", index: 0, texte: "qui fait la sieste" },
+          { cle: "ou", nom: "Où", index: 0, texte: "dans une gare" }
+        ]
+      });
+      egal(alea.appels, 3, "un appel à alea par morceau");
+    });
+  });
+
+  test("alea déterministe : index = partie entière de alea() × nombre de mots, dans l’ordre des morceaux", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0.5, 0.99, 0.3]);
+      var idee = L.genererIdee("personnage", { alea: alea });
+      egal(idee.texte, "Une sorcière qui danse sur un toit");
+      pareil([idee.morceaux[0].index, idee.morceaux[1].index, idee.morceaux[2].index], [1, 1, 1]);
+      egal(alea.appels, 3);
+      egal(L.genererIdee("personnage", { alea: suite([0.67, 0.49, 0.75]) }).texte, "Un facteur qui fait la sieste sous la pluie");
+      egal(L.genererIdee("lieu", { alea: suite([0.5, 0.34]) }).texte, "Un phare, la nuit");
+    });
+  });
+
+  test("même suite, même idée : le tirage ne dépend que de alea", function () {
+    avecIdees(ideesFactices(), function () {
+      var g, a, b;
+      for (g = 1; g <= 30; g++) {
+        a = L.genererIdee("personnage", { alea: L.mulberry32(g) });
+        b = L.genererIdee("personnage", { alea: L.mulberry32(g) });
+        pareil(a, b, "graine " + g);
+      }
+    });
+  });
+
+  test("le texte commence par une majuscule, lettres accentuées comprises", function () {
+    var donnees = {
+      categories: [{
+        cle: "essai", nom: "Essai", description: "Pour le test.", gabarit: "{a} {b}",
+        morceaux: [
+          { cle: "a", nom: "A", mots: ["éléphant", "île", "à la plage", "œuf", "un chat", "Zoé", "3 pommes"] },
+          { cle: "b", nom: "B", mots: ["en bois"] }
+        ]
+      }]
+    };
+    avecIdees(donnees, function () {
+      var attendus = ["Éléphant en bois", "Île en bois", "À la plage en bois", "Œuf en bois", "Un chat en bois", "Zoé en bois", "3 pommes en bois"];
+      var i;
+      for (i = 0; i < attendus.length; i++) {
+        egal(L.ideeDepuisIndex("essai", [i, 0]).texte, attendus[i]);
+      }
+    });
+  });
+
+  test("gabarit : chaque {cle} est remplacé une fois, la ponctuation du gabarit est gardée", function () {
+    avecIdees(ideesFactices(), function () {
+      egal(L.genererIdee("lieu", { alea: suite([0, 0]) }).texte, "Une île, à l’aube");
+      egal(L.genererIdee("objet", { alea: suite([0.7]) }).texte, "Une théière");
+    });
+  });
+
+  test("gabarit : mots rognés, caractères spéciaux gardés tels quels, {cle} inconnue laissée en place", function () {
+    var donnees = {
+      categories: [
+        {
+          cle: "special", nom: "Spécial", description: "Pour le test.", gabarit: "  {a}   {constructor} et {inconnu} ",
+          morceaux: [
+            { cle: "a", nom: "A", mots: ["  éléphant  "] },
+            { cle: "constructor", nom: "B", mots: ["à 5 $& $1 euros"] }
+          ]
+        },
+        {
+          cle: "nu", nom: "Sans gabarit", description: "Pour le test.",
+          morceaux: [{ cle: "a", nom: "A", mots: ["un chat"] }, { cle: "b", nom: "B", mots: ["perché"] }]
+        }
+      ]
+    };
+    avecIdees(donnees, function () {
+      var idee = L.genererIdee("special", { alea: suite([0]) });
+      egal(idee.texte, "Éléphant à 5 $& $1 euros et {inconnu}");
+      egal(idee.morceaux[0].texte, "éléphant", "mot rogné");
+      egal(L.genererIdee("nu", { alea: suite([0]) }).texte, "Un chat perché", "sans gabarit : les mots à la suite");
+    });
+  });
+
+  test("verrous : les morceaux verrouillés gardent leur index, les autres sont tirés", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0]);
+      var idee = L.genererIdee("personnage", { alea: alea, verrous: { qui: 2, ou: 3 } });
+      egal(idee.texte, "Un facteur qui fait la sieste sous la pluie");
+      pareil([idee.morceaux[0].index, idee.morceaux[1].index, idee.morceaux[2].index], [2, 0, 3]);
+      egal(alea.appels, 1, "seul le morceau libre consomme un tirage");
+      alea = suite([0.99]);
+      egal(L.genererIdee("personnage", { alea: alea, verrous: { quoi: 0 } }).texte, "Un facteur qui fait la sieste sous la pluie");
+      egal(alea.appels, 2);
+    });
+  });
+
+  test("verrous : avec tous les morceaux verrouillés, l’idée ne change plus et alea n’est pas appelé", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0.9]);
+      var verrous = { qui: 1, quoi: 1, ou: 2 };
+      var g;
+      for (g = 0; g < 5; g++) {
+        egal(L.genererIdee("personnage", { alea: alea, verrous: verrous }).texte, "Une sorcière qui danse au marché");
+      }
+      egal(alea.appels, 0);
+    });
+  });
+
+  test("verrous respectés sur 200 tirages pseudo-aléatoires", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = L.mulberry32(2026);
+      var vus = {};
+      var n = 0;
+      var i, idee;
+      for (i = 0; i < 200; i++) {
+        idee = L.genererIdee("personnage", { alea: alea, verrous: { quoi: 1 } });
+        egal(idee.morceaux[1].index, 1, "tirage n° " + i);
+        egal(idee.morceaux[1].texte, "qui danse");
+        verifier(idee.texte.indexOf(" qui danse ") !== -1, "texte inattendu : " + idee.texte);
+        if (vus[idee.texte] !== true) {
+          vus[idee.texte] = true;
+          n++;
+        }
+      }
+      egal(n, 12, "les 3 × 4 combinaisons libres devraient toutes sortir");
+    });
+  });
+
+  test("verrou invalide : ignoré (clé inconnue, index hors limites, non entier, mauvais type)", function () {
+    avecIdees(ideesFactices(), function () {
+      var mauvais = [
+        { inconnu: 0 }, { qui: 3 }, { qui: -1 }, { qui: 1.5 }, { qui: "1" }, { qui: null }, { qui: NaN },
+        { qui: true }, { qui: [1] }, { qui: { index: 1 } }, { toString: 0 }, json("{'__proto__':{'qui':2}}")
+      ];
+      var i, alea, idee;
+      for (i = 0; i < mauvais.length; i++) {
+        alea = suite([0]);
+        idee = L.genererIdee("personnage", { alea: alea, verrous: mauvais[i] });
+        egal(idee.texte, IDEE_ROBOT, "verrous n° " + i);
+        egal(alea.appels, 3, "verrous n° " + i + " : tous les morceaux sont tirés");
+      }
+      /* Un verrou hérité d’un prototype n’est pas un verrou. */
+      alea = suite([0]);
+      idee = L.genererIdee("personnage", { alea: alea, verrous: Object.create({ qui: 2 }) });
+      egal(idee.texte, IDEE_ROBOT, "verrou hérité d’un prototype");
+      egal(alea.appels, 3, "verrou hérité d’un prototype : tous les morceaux sont tirés");
+      egal(L.genererIdee("personnage", { alea: suite([0]), verrous: "qui" }).texte, IDEE_ROBOT, "verrous en chaîne");
+      egal(L.genererIdee("personnage", { alea: suite([0]), verrous: [2, 1, 3] }).texte, IDEE_ROBOT, "verrous en tableau");
+      /* Un verrou valide à côté d’un verrou invalide reste respecté. */
+      egal(L.genererIdee("personnage", { alea: suite([0]), verrous: { qui: 99, ou: 2 } }).texte,
+        "Un robot qui fait la sieste au marché");
+    });
+  });
+
+  test("« surprise » : la catégorie est tirée d’abord, puis les morceaux", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0.4, 0.6, 0.9]);
+      var idee = L.genererIdee("surprise", { alea: alea });
+      egal(idee.categorieCle, "lieu");
+      egal(idee.categorieNom, "Lieu");
+      egal(idee.texte, "Un phare, en hiver");
+      egal(alea.appels, 3, "un appel pour la catégorie, un par morceau");
+      alea = suite([0.99, 0]);
+      egal(L.genererIdee("surprise", { alea: alea }).texte, "Une théière");
+      egal(alea.appels, 2);
+      egal(L.genererIdee("surprise", { alea: suite([0]) }).texte, IDEE_ROBOT);
+      egal(L.CLE_SURPRISE, "surprise");
+    });
+  });
+
+  test("catégorie absente (undefined ou null) : même chose que « surprise »", function () {
+    avecIdees(ideesFactices(), function () {
+      pareil(L.genererIdee(undefined, { alea: suite([0.4, 0.6, 0.9]) }), L.genererIdee("surprise", { alea: suite([0.4, 0.6, 0.9]) }));
+      pareil(L.genererIdee(null, { alea: suite([0.4, 0.6, 0.9]) }), L.genererIdee("surprise", { alea: suite([0.4, 0.6, 0.9]) }));
+    });
+  });
+
+  test("« surprise » : toutes les catégories finissent par sortir", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = L.mulberry32(7);
+      var compte = { personnage: 0, lieu: 0, objet: 0 };
+      var i;
+      for (i = 0; i < 300; i++) {
+        compte[L.genererIdee("surprise", { alea: alea }).categorieCle]++;
+      }
+      verifier(compte.personnage > 50 && compte.lieu > 50 && compte.objet > 50, "répartition douteuse : " + stable(compte));
+    });
+  });
+
+  test("« surprise » avec des verrous : pas de tirage de catégorie, on garde celle des verrous", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0.9]);
+      var idee = L.genererIdee("surprise", { alea: alea, verrous: { moment: 1 } });
+      var i;
+      egal(idee.categorieCle, "lieu");
+      egal(idee.texte, "Un phare, la nuit");
+      egal(alea.appels, 1, "seul le morceau libre est tiré");
+      alea = suite([0.5]);
+      idee = L.genererIdee(undefined, { alea: alea, verrous: { qui: 2, ou: 1 } });
+      egal(idee.texte, "Un facteur qui danse sur un toit");
+      egal(alea.appels, 1);
+      /* Toujours la même catégorie, quel que soit l’aléa. */
+      alea = L.mulberry32(11);
+      for (i = 0; i < 50; i++) {
+        idee = L.genererIdee("surprise", { alea: alea, verrous: { endroit: 0 } });
+        egal(idee.categorieCle, "lieu", "tirage n° " + i);
+        egal(idee.morceaux[0].texte, "une île", "tirage n° " + i);
+      }
+    });
+  });
+
+  test("« surprise » avec seulement des verrous invalides : tirage habituel", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0]);
+      egal(L.genererIdee("surprise", { alea: alea, verrous: { inconnu: 1, qui: 9 } }).texte, IDEE_ROBOT);
+      egal(alea.appels, 4, "catégorie + trois morceaux");
+    });
+  });
+
+  test("« surprise » avec un verrou sur une clé partagée par deux catégories : « eviter » désigne la bonne", function () {
+    var donnees = {
+      categories: [
+        {
+          cle: "personnage", nom: "Personnage", description: "Quelqu’un.", gabarit: "{qui} {detail}",
+          morceaux: [
+            { cle: "qui", nom: "Qui", mots: ["un robot", "une sorcière"] },
+            { cle: "detail", nom: "Détail", mots: ["à lunettes", "en pyjama"] }
+          ]
+        },
+        {
+          cle: "scene", nom: "Scène", description: "Une histoire.", gabarit: "{qui} {action}",
+          morceaux: [
+            { cle: "qui", nom: "Qui", mots: ["un chat", "un facteur"] },
+            { cle: "action", nom: "Action", mots: ["qui danse", "qui dort"] }
+          ]
+        }
+      ]
+    };
+    avecIdees(donnees, function () {
+      var alea = suite([0]);
+      var idee = L.genererIdee("surprise", { alea: alea, verrous: { qui: 1 }, eviter: "Un facteur qui dort" });
+      egal(idee.categorieCle, "scene", "l’idée affichée venait de « scene »");
+      egal(idee.texte, "Un facteur qui danse");
+      egal(alea.appels, 1, "aucun tirage de catégorie");
+      idee = L.genererIdee("surprise", { alea: suite([0.9]), verrous: { qui: 1 }, eviter: "Une sorcière en pyjama" });
+      egal(idee.texte, "Une sorcière à lunettes", "l’idée affichée venait de « personnage »");
+      /* Sans « eviter », ou s’il ne désigne personne : la première catégorie dans l’ordre des données. */
+      egal(L.genererIdee("surprise", { alea: suite([0]), verrous: { qui: 1 } }).categorieCle, "personnage");
+      egal(L.genererIdee("surprise", { alea: suite([0]), verrous: { qui: 1 }, eviter: "Tout autre chose" }).categorieCle, "personnage");
+      /* Davantage de verrous acceptés l’emporte sur tout le reste. */
+      egal(L.genererIdee("surprise", { alea: suite([0]), verrous: { qui: 1, action: 1 }, eviter: "Une sorcière en pyjama" }).texte,
+        "Un facteur qui dort");
+      /* Avec la clé de la catégorie, aucune hésitation. */
+      egal(L.genererIdee("scene", { alea: suite([0]), verrous: { qui: 0 } }).texte, "Un chat qui danse");
+    });
+  });
+
+  test("eviter : si le premier tirage redonne la même idée, on retire", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0, 0, 0, 0.5, 0, 0]);
+      var idee = L.genererIdee("personnage", { alea: alea, eviter: IDEE_ROBOT });
+      egal(idee.texte, "Une sorcière qui fait la sieste dans une gare");
+      egal(alea.appels, 6, "deux tirages complets");
+      /* Une idée différente dès le premier tirage n’est pas retirée. */
+      alea = suite([0.5, 0, 0]);
+      egal(L.genererIdee("personnage", { alea: alea, eviter: IDEE_ROBOT }).texte, "Une sorcière qui fait la sieste dans une gare");
+      egal(alea.appels, 3);
+    });
+  });
+
+  test("eviter : même si l’aléa s’entête, le résultat diffère et le nombre d’essais est borné", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0]);
+      var idee = L.genererIdee("personnage", { alea: alea, eviter: IDEE_ROBOT });
+      verifier(idee.texte !== IDEE_ROBOT, "la même idée a été rendue");
+      egal(idee.texte, "Une sorcière qui fait la sieste dans une gare", "combinaison voisine");
+      verifier(alea.appels <= 60, "trop d’essais : " + alea.appels + " appels à alea");
+      /* Le premier morceau est verrouillé : c’est le suivant qui bouge. */
+      idee = L.genererIdee("personnage", { alea: suite([0]), eviter: IDEE_ROBOT, verrous: { qui: 0 } });
+      egal(idee.texte, "Un robot qui danse dans une gare");
+      /* En mode surprise aussi. */
+      idee = L.genererIdee("surprise", { alea: suite([0]), eviter: IDEE_ROBOT });
+      verifier(idee !== null && idee.texte !== IDEE_ROBOT, "surprise : la même idée a été rendue");
+    });
+  });
+
+  test("eviter : jamais deux fois de suite la même idée sur 500 tirages enchaînés", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = L.mulberry32(42);
+      var cles = ["personnage", "lieu", "surprise"];
+      var c, i, precedent, idee;
+      for (c = 0; c < cles.length; c++) {
+        precedent = "";
+        for (i = 0; i < 500; i++) {
+          idee = L.genererIdee(cles[c], { alea: alea, eviter: precedent });
+          verifier(idee.texte !== precedent, cles[c] + " : « " + idee.texte + " » deux fois de suite");
+          precedent = idee.texte;
+        }
+      }
+    });
+  });
+
+  test("eviter : sans autre combinaison possible, la même idée est rendue (pas de boucle sans fin)", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = suite([0.3]);
+      egal(L.genererIdee("objet", { alea: alea, eviter: "Une théière" }).texte, "Une théière", "catégorie à une seule idée");
+      verifier(alea.appels <= 20, "trop d’essais : " + alea.appels);
+      alea = suite([0.3]);
+      egal(L.genererIdee("personnage", { alea: alea, eviter: IDEE_ROBOT, verrous: { qui: 0, quoi: 0, ou: 0 } }).texte, IDEE_ROBOT,
+        "tout est verrouillé");
+      egal(alea.appels, 0);
+    });
+  });
+
+  test("eviter en mode surprise : si la catégorie n’a qu’une idée, une autre catégorie prend le relais", function () {
+    var donnees = {
+      categories: [
+        { cle: "a", nom: "A", description: "Une.", gabarit: "{x}", morceaux: [{ cle: "x", nom: "X", mots: ["un seul mot"] }] },
+        { cle: "b", nom: "B", description: "Deux.", gabarit: "{y}", morceaux: [{ cle: "y", nom: "Y", mots: ["un autre mot"] }] }
+      ]
+    };
+    avecIdees(donnees, function () {
+      var idee = L.genererIdee("surprise", { alea: suite([0]), eviter: "Un seul mot" });
+      egal(idee.texte, "Un autre mot");
+      egal(idee.categorieCle, "b");
+    });
+  });
+
+  test("eviter : une valeur qui n’est pas un texte est ignorée", function () {
+    avecIdees(ideesFactices(), function () {
+      var valeurs = [undefined, null, 42, true, {}, [IDEE_ROBOT]];
+      var i;
+      for (i = 0; i < valeurs.length; i++) {
+        egal(L.genererIdee("personnage", { alea: suite([0]), eviter: valeurs[i] }).texte, IDEE_ROBOT, "valeur n° " + i);
+      }
+    });
+  });
+
+  test("catégorie inconnue : null, sans exception", function () {
+    avecIdees(ideesFactices(), function () {
+      var inconnues = ["monstre", "", "Personnage", " personnage", "toString", "__proto__", "constructor", 0, 42, true, {}, [], ["personnage"]];
+      var i;
+      for (i = 0; i < inconnues.length; i++) {
+        egal(L.genererIdee(inconnues[i], { alea: suite([0]) }), null, "catégorie n° " + i + " (" + stable(inconnues[i]) + ")");
+        egal(L.ideeDepuisIndex(inconnues[i], [0, 0, 0]), null, "ideeDepuisIndex, catégorie n° " + i);
+      }
+    });
+  });
+
+  test("données absentes : null pour toute catégorie, sans exception", function () {
+    var absentes = [undefined, null, {}, { categories: [] }, { categories: "x" }, "idees"];
+    var i;
+    function rienNeSort() {
+      egal(L.genererIdee("personnage", { alea: suite([0]) }), null, "données n° " + i);
+      egal(L.genererIdee("surprise", { alea: suite([0]) }), null, "surprise, données n° " + i);
+      egal(L.genererIdee(), null, "sans argument, données n° " + i);
+      egal(L.ideeDepuisIndex("personnage", [0, 0, 0]), null, "ideeDepuisIndex, données n° " + i);
+    }
+    for (i = 0; i < absentes.length; i++) {
+      avecIdees(absentes[i], rienNeSort);
+    }
+  });
+
+  test("sans options : le hasard natif donne une idée bien formée", function () {
+    avecIdees(ideesFactices(), function () {
+      var i, idee, m;
+      for (i = 0; i < 40; i++) {
+        idee = i % 2 === 0 ? L.genererIdee("personnage") : L.genererIdee();
+        verifier(idee !== null && typeof idee.texte === "string" && idee.texte.length > 5, "idée inattendue : " + stable(idee));
+        for (m = 0; m < idee.morceaux.length; m++) {
+          verifier(idee.morceaux[m].index >= 0 && idee.morceaux[m].index <= 3, "index hors limites");
+        }
+      }
+      verifier(L.genererIdee("lieu", null) !== null, "options null");
+      verifier(L.genererIdee("lieu", "options") !== null, "options en chaîne");
+      verifier(L.genererIdee("lieu", { alea: "pas une fonction" }) !== null, "alea qui n’est pas une fonction");
+    });
+  });
+
+  test("alea qui déborde ou déraille : les index restent dans les limites", function () {
+    avecIdees(ideesFactices(), function () {
+      var valeurs = [1, 2, 1000, -0.5, -3, NaN, Infinity, -Infinity, undefined, null, "0.5", {}];
+      var i, idee, m;
+      egal(L.genererIdee("personnage", { alea: suite([1]) }).texte, "Un facteur qui danse sous la pluie", "1 : dernier mot");
+      egal(L.genererIdee("personnage", { alea: suite([-0.5]) }).texte, IDEE_ROBOT, "négatif : premier mot");
+      egal(L.genererIdee("personnage", { alea: suite([NaN]) }).texte, IDEE_ROBOT, "NaN : premier mot");
+      for (i = 0; i < valeurs.length; i++) {
+        idee = L.genererIdee("surprise", { alea: suite([valeurs[i]]) });
+        verifier(idee !== null, "null pour la valeur n° " + i);
+        for (m = 0; m < idee.morceaux.length; m++) {
+          verifier(typeof idee.morceaux[m].texte === "string" && idee.morceaux[m].texte !== "", "mot manquant, valeur n° " + i);
+        }
+      }
+    });
+  });
+
+  test("genererIdee ne modifie ni les données ni les options, et rend un objet indépendant", function () {
+    var donnees = ideesFactices();
+    avecIdees(donnees, function () {
+      var avant = stable(donnees);
+      var verrous = { qui: 1, inconnu: 5 };
+      var options = { alea: suite([0.2]), verrous: verrous, eviter: IDEE_ROBOT };
+      var idee = L.genererIdee("personnage", options);
+      idee.texte = "Modifié";
+      idee.morceaux[0].texte = "modifié";
+      idee.morceaux.pop();
+      egal(stable(donnees), avant, "les données ont été modifiées");
+      pareil(verrous, { qui: 1, inconnu: 5 }, "les verrous ont été modifiés");
+      egal(options.eviter, IDEE_ROBOT);
+      egal(L.genererIdee("personnage", { alea: suite([0.2]), verrous: verrous }).morceaux.length, 3);
+    });
+  });
+
+  test("ideeDepuisIndex reconstruit une idée à partir de ses index (objet ou tableau)", function () {
+    avecIdees(ideesFactices(), function () {
+      var idee = L.ideeDepuisIndex("personnage", { qui: 2, quoi: 1, ou: 3 });
+      egal(idee.texte, "Un facteur qui danse sous la pluie");
+      egal(idee.categorieCle, "personnage");
+      pareil(L.ideeDepuisIndex("personnage", [2, 1, 3]), idee);
+      pareil(L.ideeDepuisIndex("personnage", { ou: 3, quoi: 1, qui: 2, autre: 7 }), idee, "ordre des clés indifférent");
+      egal(L.ideeDepuisIndex("objet", [0]).texte, "Une théière");
+    });
+  });
+
+  test("aller-retour : les index d’une idée générée redonnent exactement la même idée", function () {
+    avecIdees(ideesFactices(), function () {
+      var alea = L.mulberry32(99);
+      var i, m, idee, index, liste;
+      for (i = 0; i < 100; i++) {
+        idee = L.genererIdee("surprise", { alea: alea });
+        index = {};
+        liste = [];
+        for (m = 0; m < idee.morceaux.length; m++) {
+          index[idee.morceaux[m].cle] = idee.morceaux[m].index;
+          liste.push(idee.morceaux[m].index);
+        }
+        pareil(L.ideeDepuisIndex(idee.categorieCle, index), idee);
+        pareil(L.ideeDepuisIndex(idee.categorieCle, liste), idee);
+      }
+    });
+  });
+
+  test("ideeDepuisIndex renvoie null si un index manque ou est invalide", function () {
+    avecIdees(ideesFactices(), function () {
+      var mauvais = [
+        undefined, null, "0,0,0", 0, {}, [], { qui: 0, quoi: 0 }, [0, 0], [0, 0, 0, 0], { qui: 3, quoi: 0, ou: 0 },
+        { qui: 0, quoi: -1, ou: 0 }, { qui: 0, quoi: 0, ou: 1.5 }, { qui: "0", quoi: 0, ou: 0 }, [0, 0, 4], [0, null, 0],
+        [NaN, 0, 0], json("{'__proto__':{'qui':0,'quoi':0,'ou':0}}")
+      ];
+      var i;
+      for (i = 0; i < mauvais.length; i++) {
+        egal(L.ideeDepuisIndex("personnage", mauvais[i]), null, "index n° " + i + " (" + stable(mauvais[i]) + ")");
+      }
+      egal(L.ideeDepuisIndex("personnage", Object.create({ qui: 0, quoi: 0, ou: 0 })), null, "index hérités d’un prototype");
+      egal(L.ideeDepuisIndex("surprise", [0, 0, 0]), null, "« surprise » n’est pas une catégorie");
+      egal(L.ideeDepuisIndex(undefined, [0, 0, 0]), null);
+    });
+  });
+
+  /* ================================================================== */
+  groupe("Favoris");
+  /* ================================================================== */
+
+  test("MAX_FAVORIS vaut 50", function () {
+    egal(L.MAX_FAVORIS, 50);
+  });
+
+  test("ajouterFavori range l’idée avec sa catégorie et son horodatage", function () {
+    avecIdees(ideesFactices(), function () {
+      var idee = L.genererIdee("personnage", { alea: suite([0]) });
+      var etat = L.ajouterFavori(L.etatInitial(), idee, "2026-11-16T09:30:00.000Z");
+      pareil(etat.favoris, [{ texte: IDEE_ROBOT, categorieCle: "personnage", ajouteLe: "2026-11-16T09:30:00.000Z" }]);
+      egal(L.estFavori(etat, IDEE_ROBOT), true);
+      egal(L.validerEtat(etat).ok, true);
+      pareil(L.validerEtat(etat).etat, etat, "l’état obtenu est déjà propre");
+    });
+  });
+
+  test("ajouterFavori : du plus récent au plus ancien", function () {
+    var etat = L.etatInitial();
+    etat = L.ajouterFavori(etat, { texte: "Premier", categorieCle: "lieu" }, "2026-11-14T10:00:00.000Z");
+    etat = L.ajouterFavori(etat, { texte: "Deuxième", categorieCle: "objet" }, "2026-11-15T10:00:00.000Z");
+    etat = L.ajouterFavori(etat, { texte: "Troisième", categorieCle: "scene" }, "2026-11-16T10:00:00.000Z");
+    pareil([etat.favoris[0].texte, etat.favoris[1].texte, etat.favoris[2].texte], ["Troisième", "Deuxième", "Premier"]);
+    egal(etat.favoris[2].ajouteLe, "2026-11-14T10:00:00.000Z");
+  });
+
+  test("ajouterFavori : pas de doublon sur le texte, le favori existant garde sa place et sa date", function () {
+    var etat = L.etatInitial();
+    var apres;
+    etat = L.ajouterFavori(etat, { texte: "Premier", categorieCle: "lieu" }, "2026-11-14T10:00:00.000Z");
+    etat = L.ajouterFavori(etat, { texte: "Deuxième", categorieCle: "objet" }, "2026-11-15T10:00:00.000Z");
+    apres = L.ajouterFavori(etat, { texte: "Premier", categorieCle: "defi" }, "2026-11-16T10:00:00.000Z");
+    pareil(apres, etat);
+    verifier(apres !== etat, "un nouvel objet est attendu");
+    egal(L.ajouterFavori(etat, { texte: "  Premier  ", categorieCle: "lieu" }, "2026-11-16T10:00:00.000Z").favoris.length, 2,
+      "les espaces autour ne font pas un autre favori");
+    egal(L.ajouterFavori(etat, { texte: "premier", categorieCle: "lieu" }, "2026-11-16T10:00:00.000Z").favoris.length, 3,
+      "la casse compte : c’est un autre texte");
+  });
+
+  test("ajouterFavori : au-delà de MAX_FAVORIS, le plus ancien est retiré", function () {
+    var etat = L.etatInitial();
+    var i;
+    for (i = 1; i <= 55; i++) {
+      etat = L.ajouterFavori(etat, { texte: "Idée n° " + i, categorieCle: "objet" }, "2026-11-16T10:00:00.000Z");
+      verifier(etat.favoris.length <= 50, "plafond dépassé après " + i + " ajouts");
+    }
+    egal(etat.favoris.length, 50);
+    egal(etat.favoris[0].texte, "Idée n° 55", "le plus récent est en tête");
+    egal(etat.favoris[49].texte, "Idée n° 6", "les cinq plus anciens sont partis");
+    egal(L.estFavori(etat, "Idée n° 5"), false);
+    egal(L.estFavori(etat, "Idée n° 6"), true);
+  });
+
+  test("ajouterFavori nettoie ce qu’il reçoit (texte, catégorie, horodatage)", function () {
+    var longue = new Array(401).join("a");
+    var etat = L.ajouterFavori(L.etatInitial(), { texte: longue, categorieCle: "pas une clé !", extra: true }, "hier soir");
+    pareil(Object.keys(etat.favoris[0]).sort(), ["ajouteLe", "categorieCle", "texte"]);
+    egal(etat.favoris[0].texte.length, 300, "texte coupé à 300 caractères");
+    egal(etat.favoris[0].categorieCle, "");
+    egal(etat.favoris[0].ajouteLe, "");
+    egal(L.estFavori(etat, longue), true, "le texte long est reconnu");
+    egal(L.ajouterFavori(etat, { texte: longue }, "").favoris.length, 1, "et il ne fait pas de doublon");
+    egal(L.retirerFavori(etat, longue).favoris.length, 0, "et il peut être retiré");
+    egal(L.ajouterFavori(L.etatInitial(), { texte: "Idée", categorieCle: 12 }, 1773000000000).favoris[0].ajouteLe, "");
+    egal(L.ajouterFavori(L.etatInitial(), { texte: "Idée" }).favoris[0].categorieCle, "", "catégorie absente");
+  });
+
+  test("ajouterFavori : un texte long coupé juste après une espace reste un seul et même favori", function () {
+    /* 299 lettres, puis une espace à la 300e place (ordinaire ou insécable), puis une suite. */
+    var textes = [new Array(300).join("a") + " bbbb", new Array(300).join("a") + String.fromCharCode(160) + "bbbb"];
+    var i, etat;
+    for (i = 0; i < textes.length; i++) {
+      etat = L.ajouterFavori(L.etatInitial(), textes[i], "2026-11-16T10:00:00.000Z");
+      egal(etat.favoris.length, 1, "texte n° " + i);
+      egal(etat.favoris[0].texte, new Array(300).join("a"), "texte n° " + i + " : rangé sans l’espace finale");
+      egal(L.estFavori(etat, textes[i]), true, "texte n° " + i + " : reconnu juste après l’ajout");
+      egal(L.ajouterFavori(etat, textes[i], "2026-11-16T11:00:00.000Z").favoris.length, 1, "texte n° " + i + " : pas de doublon");
+      pareil(L.validerEtat(etat).etat, etat, "texte n° " + i + " : l’état obtenu est déjà propre");
+      pareil(L.depuisJSON(L.versJSON(etat)).etat, etat, "texte n° " + i + " : aller-retour JSON à l’identique");
+      egal(L.retirerFavori(etat, textes[i]).favoris.length, 0, "texte n° " + i + " : il peut être retiré");
+    }
+  });
+
+  test("ajouterFavori : rien à ajouter (texte vide ou idée illisible), copie inchangée", function () {
+    var etat = L.ajouterFavori(L.etatInitial(), { texte: "Premier", categorieCle: "lieu" }, "2026-11-14T10:00:00.000Z");
+    var mauvaises = [undefined, null, 42, true, [], {}, { texte: "" }, { texte: "   " }, { texte: 12 }, { texte: null },
+      { titre: "pas de texte" }, "", "   ", Object.create({ texte: "hérité" })];
+    var i, apres;
+    for (i = 0; i < mauvaises.length; i++) {
+      apres = L.ajouterFavori(etat, mauvaises[i], "2026-11-16T10:00:00.000Z");
+      pareil(apres, etat, "idée n° " + i);
+      verifier(apres !== etat, "un nouvel objet est attendu (idée n° " + i + ")");
+    }
+  });
+
+  test("ajouterFavori accepte un simple texte, et repart d’un état neuf si l’état est illisible", function () {
+    var etat = L.ajouterFavori(null, "Une idée notée à la main", "2026-11-16T10:00:00.000Z");
+    egal(etat.version, 1);
+    pareil(etat.favoris, [{ texte: "Une idée notée à la main", categorieCle: "", ajouteLe: "2026-11-16T10:00:00.000Z" }]);
+    pareil(etat.guide, { faits: {} });
+  });
+
+  test("retirerFavori retire le bon favori et garde l’ordre des autres", function () {
+    var etat = L.etatInitial();
+    var apres;
+    etat = L.ajouterFavori(etat, { texte: "Premier" }, "2026-11-14T10:00:00.000Z");
+    etat = L.ajouterFavori(etat, { texte: "Deuxième" }, "2026-11-15T10:00:00.000Z");
+    etat = L.ajouterFavori(etat, { texte: "Troisième" }, "2026-11-16T10:00:00.000Z");
+    apres = L.retirerFavori(etat, "Deuxième");
+    pareil([apres.favoris[0].texte, apres.favoris[1].texte], ["Troisième", "Premier"]);
+    egal(L.estFavori(apres, "Deuxième"), false);
+    egal(L.estFavori(apres, "Premier"), true);
+    egal(L.retirerFavori(apres, " Premier ").favoris.length, 1, "les espaces autour sont ignorés");
+  });
+
+  test("retirerFavori d’un texte absent ou illisible : état équivalent, mais nouveau", function () {
+    var etat = L.ajouterFavori(L.etatInitial(), { texte: "Premier" }, "2026-11-14T10:00:00.000Z");
+    var valeurs = ["Absent", "", undefined, null, 42, {}, ["Premier"]];
+    var i, apres;
+    for (i = 0; i < valeurs.length; i++) {
+      apres = L.retirerFavori(etat, valeurs[i]);
+      pareil(apres, etat, "valeur n° " + i);
+      verifier(apres !== etat && apres.favoris !== etat.favoris, "objets partagés (valeur n° " + i + ")");
+    }
+    pareil(L.retirerFavori(null, "Premier"), L.etatInitial());
+  });
+
+  test("estFavori : vrai seulement pour un texte présent, sans exception sur un état douteux", function () {
+    var etat = L.ajouterFavori(L.etatInitial(), { texte: "Premier" }, "2026-11-14T10:00:00.000Z");
+    egal(L.estFavori(etat, "Premier"), true);
+    egal(L.estFavori(etat, "  Premier "), true);
+    egal(L.estFavori(etat, "Autre"), false);
+    egal(L.estFavori(etat, ""), false);
+    egal(L.estFavori(etat, undefined), false);
+    egal(L.estFavori(etat, 42), false);
+    egal(L.estFavori(null, "Premier"), false);
+    egal(L.estFavori({}, "Premier"), false);
+    egal(L.estFavori({ favoris: "Premier" }, "Premier"), false);
+    egal(L.estFavori({ favoris: [null, 42, "Premier", { texte: 12 }] }, "Premier"), false);
+    egal(L.estFavori({ favoris: [null, { texte: "Premier" }] }, "Premier"), true);
+    egal(L.estFavori(L.etatInitial(), "toString"), false);
+  });
+
+  test("ajouterFavori et retirerFavori ne modifient pas l’ancien état et ne partagent rien avec lui", function () {
+    var e0 = L.ajouterFavori(L.etatInitial(), { texte: "Premier", categorieCle: "lieu" }, "2026-11-14T10:00:00.000Z");
+    var avant = stable(e0);
+    var idee = { texte: "Deuxième", categorieCle: "objet" };
+    var e1 = L.ajouterFavori(e0, idee, "2026-11-15T10:00:00.000Z");
+    var e2 = L.retirerFavori(e1, "Premier");
+    egal(stable(e0), avant, "ajouterFavori a modifié l’ancien état");
+    verifier(e1 !== e0 && e1.favoris !== e0.favoris && e1.favoris[1] !== e0.favoris[0], "objets partagés après un ajout");
+    egal(e1.favoris.length, 2);
+    egal(e2.favoris.length, 1);
+    egal(e1.favoris.length, 2, "retirerFavori a modifié l’ancien état");
+    verifier(e2.favoris[0] !== e1.favoris[0], "objets partagés après un retrait");
+    idee.texte = "Changé après coup";
+    egal(e1.favoris[0].texte, "Deuxième", "le favori garde une référence vers l’idée reçue");
+    pareil(idee, { texte: "Changé après coup", categorieCle: "objet" });
+  });
+
+  test("les favoris et le guide survivent aux autres changements d’état et à l’aller-retour JSON", function () {
+    var etat = L.ajouterFavori(L.etatInitial(), { texte: "Une île, à l’aube", categorieCle: "lieu" }, "2026-11-14T10:00:00.000Z");
+    var apres;
+    etat = L.marquerChapitre(etat, "g02", "2026-11-15");
+    apres = L.marquerFait(etat, "2026-11-16", { titre: "Un dessin" });
+    apres = L.changerExercice(apres, "2026-11-16");
+    apres = L.modifierReglages(apres, { theme: "sombre" });
+    apres = L.marquerPaliersVus(apres, [1]);
+    apres = L.annulerFait(apres, "2026-11-16");
+    pareil(apres.favoris, etat.favoris);
+    pareil(apres.guide, { faits: { g02: "2026-11-15" } });
+    pareil(L.depuisJSON(L.versJSON(etat)).etat, etat, "JSON compact");
+    pareil(L.depuisJSON(L.versJSON(etat, true)).etat, etat, "JSON lisible");
+  });
+
+  /* ================================================================== */
+  groupe("Guide (données factices)");
+  /* ================================================================== */
+
+  test("partiesGuide rend des copies { numero, titre } triées par numéro", function () {
+    var donnees = guideFactice();
+    avecGuide(donnees, function () {
+      var p = L.partiesGuide();
+      pareil(p, [{ numero: 1, titre: "Première partie" }, { numero: 2, titre: "Deuxième partie" }]);
+      p[0].titre = "Modifié";
+      egal(L.partiesGuide()[0].titre, "Première partie");
+      egal(donnees.parties[0].numero, 2, "l’ordre des données a été modifié");
+      pareil(Object.keys(donnees.parties[0]).sort(), ["numero", "titre"], "les données ont été enrichies par erreur");
+    });
+  });
+
+  test("chapitresGuide rend les chapitres triés par numéro", function () {
+    var donnees = guideFactice();
+    avecGuide(donnees, function () {
+      pareil(idsDe(L.chapitresGuide()), ["g01", "g02", "g03", "g04"]);
+      pareil(idsDe(donnees.chapitres), ["g03", "g01", "g04", "g02"], "l’ordre des données a été modifié");
+      pareil(L.chapitresGuide()[2], chapitreFactice(3, 2), "chapitre complet, blocs compris");
+    });
+  });
+
+  test("chapitresGuide rend des copies en profondeur : les modifier n’abîme pas le guide", function () {
+    var donnees = guideFactice();
+    avecGuide(donnees, function () {
+      var avant = stable(donnees);
+      var c = L.chapitresGuide();
+      c[0].titre = "Modifié";
+      c[0].blocs[0].contenu = "Modifié";
+      c[0].blocs[1].formes[0][1].x = 999;
+      c[0].blocs[1].formes.pop();
+      c[0].blocs[2].elements.push("Quatre.");
+      c.pop();
+      egal(stable(donnees), avant);
+      egal(L.chapitresGuide().length, 4);
+      egal(L.chapitreParId("g01").blocs[1].formes[0][1].x, 20);
+    });
+  });
+
+  test("guide absent ou illisible : listes vides et null, sans exception", function () {
+    var absents = [undefined, null, {}, [], "guide", 42, { chapitres: null }, { chapitres: "tous", parties: "toutes" }];
+    var i;
+    function rien() {
+      pareil(L.chapitresGuide(), [], "chapitres, données n° " + i);
+      pareil(L.partiesGuide(), [], "parties, données n° " + i);
+      egal(L.chapitreParId("g01"), null);
+      egal(L.chapitreVoisin("g01", 1), null);
+      egal(L.prochainChapitre(L.etatInitial()), null);
+      egal(L.nombreChapitresFaits(L.marquerChapitre(L.etatInitial(), "g01", "2026-11-16")), 0);
+    }
+    for (i = 0; i < absents.length; i++) {
+      avecGuide(absents[i], rien);
+    }
+  });
+
+  test("chapitres mal formés ou en double : écartés", function () {
+    var donnees = guideFactice();
+    var double = chapitreFactice(1, 1);
+    double.titre = "Doublon";
+    donnees.chapitres.push(null, "g05", { numero: 5 }, { id: "g5", numero: 5 }, { id: "chapitre-06", numero: 6 },
+      { id: "g07", numero: "7" }, { id: "g08" }, { id: "g09", numero: NaN }, double);
+    donnees.parties.push(null, { titre: "Sans numéro" }, { numero: "3", titre: "Numéro en texte" });
+    avecGuide(donnees, function () {
+      pareil(idsDe(L.chapitresGuide()), ["g01", "g02", "g03", "g04"]);
+      egal(L.chapitreParId("g01").titre, "Chapitre 1", "le premier des deux doublons est gardé");
+      egal(L.chapitreParId("g07"), null);
+      egal(L.partiesGuide().length, 2);
+    });
+  });
+
+  test("chapitreParId rend une copie du bon chapitre, ou null", function () {
+    avecGuide(guideFactice(), function () {
+      var inconnus = ["g05", "g00", "g1", "G01", "", " g01", "toString", "__proto__", 1, null, undefined, {}, ["g01"]];
+      var i;
+      pareil(L.chapitreParId("g03"), chapitreFactice(3, 2));
+      verifier(L.chapitreParId("g03") !== L.chapitreParId("g03"), "une copie est attendue à chaque appel");
+      for (i = 0; i < inconnus.length; i++) {
+        egal(L.chapitreParId(inconnus[i]), null, "id n° " + i + " (" + stable(inconnus[i]) + ")");
+      }
+    });
+  });
+
+  test("chapitreVoisin : précédent et suivant dans l’ordre des numéros, null aux extrémités", function () {
+    avecGuide(guideFactice(), function () {
+      egal(L.chapitreVoisin("g01", 1).id, "g02");
+      egal(L.chapitreVoisin("g02", 1).id, "g03");
+      egal(L.chapitreVoisin("g03", 1).id, "g04");
+      egal(L.chapitreVoisin("g04", 1), null, "après le dernier");
+      egal(L.chapitreVoisin("g04", -1).id, "g03");
+      egal(L.chapitreVoisin("g02", -1).id, "g01");
+      egal(L.chapitreVoisin("g01", -1), null, "avant le premier");
+      pareil(L.chapitreVoisin("g01", 1), chapitreFactice(2, 1), "chapitre complet");
+    });
+  });
+
+  test("chapitreVoisin rend une copie : la modifier n’abîme pas le guide", function () {
+    var donnees = guideFactice();
+    avecGuide(donnees, function () {
+      var avant = stable(donnees);
+      var voisin = L.chapitreVoisin("g01", 1);
+      voisin.titre = "Modifié";
+      voisin.blocs[1].formes[0][1].x = 999;
+      voisin.blocs.pop();
+      egal(stable(donnees), avant);
+      pareil(L.chapitreVoisin("g01", 1), chapitreFactice(2, 1));
+      verifier(L.chapitreVoisin("g01", 1) !== L.chapitreVoisin("g01", 1), "une copie est attendue à chaque appel");
+    });
+  });
+
+  test("chapitres de même numéro : ils gardent l’ordre des données", function () {
+    var donnees = { parties: [], chapitres: [chapitreFactice(3, 1), chapitreFactice(1, 1), chapitreFactice(2, 1), chapitreFactice(4, 1)] };
+    donnees.chapitres[0].numero = 5;
+    donnees.chapitres[1].numero = 5;
+    donnees.chapitres[2].numero = 5;
+    donnees.chapitres[3].numero = 1;
+    avecGuide(donnees, function () {
+      pareil(idsDe(L.chapitresGuide()), ["g04", "g03", "g01", "g02"]);
+      egal(L.chapitreVoisin("g03", 1).id, "g01");
+      egal(L.chapitreVoisin("g03", -1).id, "g04");
+    });
+  });
+
+  test("chapitre portant une propriété « __proto__ » : elle n’est pas copiée", function () {
+    var donnees = json("{'parties':[],'chapitres':[{'id':'g01','numero':1,'titre':'Piège','__proto__':{'pollue':true}," +
+      "'blocs':[{'type':'texte','contenu':'Un paragraphe.','__proto__':{'pollue':true}}]}]}");
+    avecGuide(donnees, function () {
+      var c = L.chapitreParId("g01");
+      egal(c.titre, "Piège");
+      egal(c.blocs[0].contenu, "Un paragraphe.");
+      egal(c.pollue, undefined);
+      egal(c.blocs[0].pollue, undefined);
+      verifier(Object.getPrototypeOf(c) === Object.prototype, "prototype du chapitre inattendu");
+      verifier(Object.getPrototypeOf(c.blocs[0]) === Object.prototype, "prototype d’un bloc inattendu");
+      egal(({}).pollue, undefined, "Object.prototype a été pollué");
+    });
+  });
+
+  test("chapitreVoisin : null pour un id inconnu ou un sens qui n’est ni -1 ni 1", function () {
+    avecGuide(guideFactice(), function () {
+      var sens = [0, 2, -2, 0.5, "1", "-1", true, null, undefined, NaN];
+      var i;
+      for (i = 0; i < sens.length; i++) {
+        egal(L.chapitreVoisin("g02", sens[i]), null, "sens n° " + i + " (" + stable(sens[i]) + ")");
+      }
+      egal(L.chapitreVoisin("g09", 1), null);
+      egal(L.chapitreVoisin("g09", -1), null);
+      egal(L.chapitreVoisin(undefined, 1), null);
+    });
+  });
+
+  test("chapitreVoisin saute les numéros manquants", function () {
+    var donnees = { parties: [], chapitres: [chapitreFactice(7, 2), chapitreFactice(2, 1), chapitreFactice(11, 3)] };
+    avecGuide(donnees, function () {
+      egal(L.chapitreVoisin("g02", 1).id, "g07");
+      egal(L.chapitreVoisin("g07", 1).id, "g11");
+      egal(L.chapitreVoisin("g11", -1).id, "g07");
+    });
+  });
+
+  test("marquerChapitre note le jour où le chapitre est fait", function () {
+    var etat = L.marquerChapitre(L.etatInitial(), "g03", "2026-11-16");
+    pareil(etat.guide, { faits: { g03: "2026-11-16" } });
+    egal(L.chapitreFait(etat, "g03"), true);
+    egal(L.chapitreFait(etat, "g04"), false);
+    egal(L.dateChapitre(etat, "g03"), "2026-11-16");
+    egal(L.dateChapitre(etat, "g04"), null);
+    pareil(L.validerEtat(etat).etat, etat, "l’état obtenu est déjà propre");
+  });
+
+  test("marquerChapitre : un chapitre déjà fait prend la nouvelle date, les autres restent", function () {
+    var etat = L.marquerChapitre(L.etatInitial(), "g03", "2026-11-10");
+    etat = L.marquerChapitre(etat, "g01", "2026-11-12");
+    etat = L.marquerChapitre(etat, "g03", "2026-11-16");
+    pareil(etat.guide.faits, { g01: "2026-11-12", g03: "2026-11-16" });
+    pareil(Object.keys(etat.guide.faits), ["g01", "g03"], "clés rangées dans l’ordre");
+  });
+
+  test("marquerChapitre : id mal formé ou date invalide, copie inchangée", function () {
+    var etat = L.marquerChapitre(L.etatInitial(), "g01", "2026-11-12");
+    var ids = ["g3", "g123", "G03", "03", "chapitre", "", " g03", "g03 ", "g0a", "__proto__", "constructor", 3, null, undefined, {}, ["g03"]];
+    var dates = ["2026-02-30", "2026-11-1", "demain", "", null, undefined, 20261116, new Date(2026, 10, 16)];
+    var i, apres;
+    for (i = 0; i < ids.length; i++) {
+      apres = L.marquerChapitre(etat, ids[i], "2026-11-16");
+      pareil(apres, etat, "id n° " + i + " (" + stable(ids[i]) + ")");
+      verifier(apres !== etat, "un nouvel objet est attendu");
+    }
+    for (i = 0; i < dates.length; i++) {
+      pareil(L.marquerChapitre(etat, "g03", dates[i]), etat, "date n° " + i);
+      /* Sur un chapitre déjà fait, une mauvaise date ne doit pas effacer la bonne. */
+      pareil(L.marquerChapitre(etat, "g01", dates[i]), etat, "date n° " + i + " sur un chapitre déjà fait");
+    }
+    egal(({}).g03, undefined);
+    egal(Object.prototype.g03, undefined);
+  });
+
+  test("marquerChapitre ne dépend pas des données : il fonctionne sans guide chargé", function () {
+    avecGuide(undefined, function () {
+      var etat = L.marquerChapitre(null, "g12", "2026-11-16");
+      egal(etat.version, 1);
+      egal(L.chapitreFait(etat, "g12"), true);
+      egal(L.nombreChapitresFaits(etat), 0, "mais aucun chapitre du guide n’est compté");
+    });
+  });
+
+  test("annulerChapitre retire le chapitre, et rend un état équivalent s’il n’était pas fait", function () {
+    var etat = L.marquerChapitre(L.marquerChapitre(L.etatInitial(), "g01", "2026-11-12"), "g02", "2026-11-13");
+    var apres = L.annulerChapitre(etat, "g01");
+    pareil(apres.guide.faits, { g02: "2026-11-13" });
+    egal(L.chapitreFait(apres, "g01"), false);
+    pareil(L.annulerChapitre(etat, "g07"), etat, "chapitre non fait");
+    pareil(L.annulerChapitre(etat, "pas un id"), etat);
+    pareil(L.annulerChapitre(etat, "__proto__"), etat);
+    verifier(L.annulerChapitre(etat, "g07") !== etat, "un nouvel objet est attendu");
+    pareil(L.annulerChapitre(L.marquerChapitre(L.etatInitial(), "g05", "2026-11-16"), "g05"), L.etatInitial(), "marquer puis annuler");
+  });
+
+  test("marquerChapitre et annulerChapitre ne modifient pas l’ancien état et ne partagent rien avec lui", function () {
+    var e0 = L.marquerChapitre(L.ajouterFavori(L.etatInitial(), "Une idée", "2026-11-10T10:00:00.000Z"), "g01", "2026-11-12");
+    var avant = stable(e0);
+    var e1 = L.marquerChapitre(e0, "g02", "2026-11-13");
+    var e2 = L.annulerChapitre(e1, "g01");
+    egal(stable(e0), avant, "marquerChapitre a modifié l’ancien état");
+    verifier(e1 !== e0 && e1.guide !== e0.guide && e1.guide.faits !== e0.guide.faits, "objets partagés après marquerChapitre");
+    pareil(e1.guide.faits, { g01: "2026-11-12", g02: "2026-11-13" });
+    pareil(e2.guide.faits, { g02: "2026-11-13" });
+    pareil(e1.guide.faits, { g01: "2026-11-12", g02: "2026-11-13" }, "annulerChapitre a modifié l’ancien état");
+    verifier(e2.guide !== e1.guide && e2.guide.faits !== e1.guide.faits, "objets partagés après annulerChapitre");
+    egal(e2.favoris.length, 1, "les favoris sont conservés");
+  });
+
+  test("chapitreFait et dateChapitre : sans exception sur un état douteux", function () {
+    var etats = [null, undefined, 42, "etat", [], {}, { guide: null }, { guide: "g01" }, { guide: {} }, { guide: { faits: null } },
+      { guide: { faits: ["g01"] } }, { guide: { faits: { g01: "pas une date" } } }, { guide: { faits: { g01: true } } },
+      { guide: { faits: Object.create({ g01: "2026-11-16" }) } }];
+    var i;
+    for (i = 0; i < etats.length; i++) {
+      egal(L.chapitreFait(etats[i], "g01"), false, "état n° " + i);
+      egal(L.dateChapitre(etats[i], "g01"), null, "état n° " + i);
+    }
+    egal(L.chapitreFait({ guide: { faits: { g01: "2026-11-16" } } }, "g01"), true);
+    egal(L.chapitreFait(L.etatInitial(), "toString"), false);
+    egal(L.chapitreFait(L.etatInitial(), "constructor"), false);
+  });
+
+  test("nombreChapitresFaits ne compte que les chapitres qui existent dans le guide", function () {
+    avecGuide(guideFactice(), function () {
+      var etat = L.etatInitial();
+      egal(L.nombreChapitresFaits(etat), 0);
+      etat = L.marquerChapitre(etat, "g02", "2026-11-10");
+      etat = L.marquerChapitre(etat, "g04", "2026-11-11");
+      egal(L.nombreChapitresFaits(etat), 2);
+      etat = L.marquerChapitre(etat, "g09", "2026-11-12");
+      etat = L.marquerChapitre(etat, "g00", "2026-11-12");
+      egal(L.nombreChapitresFaits(etat), 2, "g09 et g00 ne sont pas dans le guide");
+      egal(Object.keys(etat.guide.faits).length, 4, "mais ils restent notés dans l’état");
+      egal(L.nombreChapitresFaits(L.annulerChapitre(etat, "g02")), 1);
+      egal(L.nombreChapitresFaits(null), 0);
+      egal(L.nombreChapitresFaits({}), 0);
+    });
+  });
+
+  test("prochainChapitre : le premier chapitre non fait, dans l’ordre des numéros", function () {
+    avecGuide(guideFactice(), function () {
+      var etat = L.etatInitial();
+      egal(L.prochainChapitre(etat).id, "g01");
+      etat = L.marquerChapitre(etat, "g01", "2026-11-10");
+      egal(L.prochainChapitre(etat).id, "g02");
+      etat = L.marquerChapitre(etat, "g03", "2026-11-11");
+      egal(L.prochainChapitre(etat).id, "g02", "un chapitre fait en avance ne fait pas sauter le suivant");
+      etat = L.marquerChapitre(etat, "g02", "2026-11-12");
+      egal(L.prochainChapitre(etat).id, "g04");
+      pareil(L.prochainChapitre(etat), chapitreFactice(4, 2), "chapitre complet");
+      etat = L.marquerChapitre(etat, "g04", "2026-11-13");
+      egal(L.prochainChapitre(etat), null, "tout est fait");
+      egal(L.nombreChapitresFaits(etat), 4);
+      egal(L.prochainChapitre(L.annulerChapitre(etat, "g03")).id, "g03");
+      egal(L.prochainChapitre(null).id, "g01", "état illisible : rien n’est fait");
+    });
+  });
+
+  test("prochainChapitre rend une copie", function () {
+    var donnees = guideFactice();
+    avecGuide(donnees, function () {
+      var avant = stable(donnees);
+      var c = L.prochainChapitre(L.etatInitial());
+      c.titre = "Modifié";
+      c.blocs.length = 0;
+      egal(stable(donnees), avant);
+      egal(L.prochainChapitre(L.etatInitial()).blocs.length, 3);
+    });
+  });
+
+  /* ================================================================== */
+  groupe("Schémas : validerForme");
+  /* ================================================================== */
+
+  test("les listes de balises, d’attributs et de classes sont celles du contrat", function () {
+    pareil(L.SCHEMA_BALISES, ["line", "rect", "circle", "ellipse", "polyline", "polygon", "path", "text"]);
+    pareil(L.SCHEMA_ATTRIBUTS, ["x1", "y1", "x2", "y2", "x", "y", "width", "height", "rx", "ry", "cx", "cy", "r",
+      "points", "d", "transform", "classe", "ancre"]);
+    pareil(L.SCHEMA_CLASSES, ["trait", "leger", "pointille", "accent", "fleche", "plein", "ombre", "ombre-forte",
+      "surligne", "etiquette", "etiquette-accent"]);
+    pareil(L.SCHEMA_ANCRES, ["start", "middle", "end"]);
+    egal(L.SCHEMA_LARGEUR, 320);
+    egal(L.SCHEMA_HAUTEUR_MIN, 120);
+    egal(L.SCHEMA_HAUTEUR_MAX, 240);
+    egal(L.SCHEMA_MAX_FORMES, 40);
+    egal(L.SCHEMA_MARGE, 6);
+  });
+
+  test("une forme valide de chaque balise est acceptée, et la réponse est exactement { ok: true }", function () {
+    var formes = formesValides();
+    var i, b;
+    for (i = 0; i < L.SCHEMA_BALISES.length; i++) {
+      b = L.SCHEMA_BALISES[i];
+      verifier(formes[b], "pas de forme d’essai pour « " + b + " »");
+      accepte(formes[b], b);
+      pareil(L.validerForme(formes[b], 320, 160), { ok: true }, b);
+      pareil(L.validerForme(formes[b]), { ok: true }, b + " sans cadre");
+    }
+  });
+
+  test("chaque classe est acceptée sur une balise qui lui convient", function () {
+    var formes = ["trait", "leger", "pointille", "accent", "plein", "ombre", "ombre-forte", "surligne"];
+    var i;
+    for (i = 0; i < formes.length; i++) {
+      accepte(variante("rect", { classe: formes[i] }), "rect " + formes[i]);
+      accepte(variante("circle", { classe: formes[i] }), "circle " + formes[i]);
+      accepte(variante("polygon", { classe: formes[i] }), "polygon " + formes[i]);
+      accepte(variante("path", { classe: formes[i] }), "path " + formes[i]);
+    }
+    accepte(variante("line", { classe: "fleche" }), "line fleche");
+    accepte(variante("path", { classe: "fleche" }), "path fleche");
+    accepte(variante("text", { classe: "etiquette" }), "text etiquette");
+    accepte(variante("text", { classe: "etiquette-accent" }), "text etiquette-accent");
+  });
+
+  test("forme mal construite : refusée", function () {
+    var mauvaises = [undefined, null, 42, "line", {}, [], ["line"], ["line", { x1: 1, y1: 1, x2: 5, y2: 5, classe: "trait" }, "texte", "trop"],
+      ["line", null], ["line", "x1=1"], ["line", [1, 2, 3, 4]], ["line", 42], [{ balise: "line" }, {}],
+      { 0: "line", 1: { x1: 1, y1: 1, x2: 5, y2: 5, classe: "trait" }, length: 2 }];
+    var i;
+    for (i = 0; i < mauvaises.length; i++) {
+      refuse(mauvaises[i], "forme n° " + i);
+    }
+  });
+
+  test("balise non permise : refusée", function () {
+    var balises = ["g", "svg", "script", "image", "use", "a", "foreignObject", "style", "animate", "set", "tspan", "LINE", "Line",
+      " line", "line ", "", "toString", "constructor", "__proto__", 42, null, undefined, ["line"]];
+    var i;
+    for (i = 0; i < balises.length; i++) {
+      refuse([balises[i], { x1: 10, y1: 10, x2: 100, y2: 80, classe: "trait" }], "balise n° " + i + " (" + stable(balises[i]) + ")");
+    }
+  });
+
+  test("attribut non permis : refusé", function () {
+    var interdits = ["style", "class", "id", "fill", "stroke", "stroke-width", "opacity", "onclick", "onload", "href",
+      "xlink:href", "filter", "mask", "clip-path", "font-size", "text-anchor", "dx", "dy", "X1", "viewBox", "toString"];
+    var i, modifs;
+    for (i = 0; i < interdits.length; i++) {
+      modifs = {};
+      modifs[interdits[i]] = "1";
+      refuse(variante("line", modifs), "line avec « " + interdits[i] + " »");
+      refuse(variante("text", modifs), "text avec « " + interdits[i] + " »");
+    }
+    refuse(["line", json("{'x1':10,'y1':10,'x2':100,'y2':80,'classe':'trait','__proto__':{'onclick':'x'}}")], "clé __proto__");
+  });
+
+  test("attribut permis mais pas à sa place sur cette balise : refusé", function () {
+    refuse(variante("line", { r: 5 }), "r sur line");
+    refuse(variante("line", { x: 5 }), "x sur line");
+    refuse(variante("line", { points: "1,1 2,2" }), "points sur line");
+    refuse(variante("rect", { cx: 5 }), "cx sur rect");
+    refuse(variante("rect", { ancre: "middle" }), "ancre sur rect");
+    refuse(variante("circle", { rx: 5 }), "rx sur circle");
+    refuse(variante("circle", { width: 5 }), "width sur circle");
+    refuse(variante("ellipse", { r: 5 }), "r sur ellipse");
+    refuse(variante("polyline", { d: "M1 1 L2 2" }), "d sur polyline");
+    refuse(variante("polygon", { x1: 5 }), "x1 sur polygon");
+    refuse(variante("path", { points: "1,1 2,2" }), "points sur path");
+    refuse(variante("path", { ancre: "end" }), "ancre sur path");
+    refuse(variante("text", { width: 50 }), "width sur text");
+    refuse(variante("text", { d: "M1 1 L2 2" }), "d sur text");
+  });
+
+  test("attribut obligatoire manquant : refusé", function () {
+    var requis = {
+      line: ["x1", "y1", "x2", "y2"], rect: ["x", "y", "width", "height"], circle: ["cx", "cy", "r"],
+      ellipse: ["cx", "cy", "rx", "ry"], polyline: ["points"], polygon: ["points"], path: ["d"], text: ["x", "y"]
+    };
+    var i, k, b, modifs;
+    for (i = 0; i < L.SCHEMA_BALISES.length; i++) {
+      b = L.SCHEMA_BALISES[i];
+      for (k = 0; k < requis[b].length; k++) {
+        modifs = {};
+        modifs[requis[b][k]] = undefined;
+        refuse(variante(b, modifs), b + " sans « " + requis[b][k] + " »");
+      }
+      refuse(variante(b, { classe: undefined }), b + " sans classe");
+      refuse([b, {}, "texte"], b + " sans aucun attribut");
+    }
+    accepte(variante("rect", { rx: undefined, ry: undefined }), "rect sans arrondi");
+    accepte(variante("text", { ancre: undefined }), "text sans ancre");
+  });
+
+  test("valeur numérique qui n’est pas un vrai nombre fini : refusée", function () {
+    var mauvaises = ["10", "", "10px", NaN, Infinity, -Infinity, null, true, [10], { valeur: 10 }];
+    var i;
+    for (i = 0; i < mauvaises.length; i++) {
+      refuse(variante("line", { x1: mauvaises[i] }), "line x1 = " + stable(mauvaises[i]) + " (n° " + i + ")");
+      refuse(variante("rect", { height: mauvaises[i] }), "rect height n° " + i);
+      refuse(variante("rect", { rx: mauvaises[i] }), "rect rx n° " + i);
+      refuse(variante("circle", { r: mauvaises[i] }), "circle r n° " + i);
+      refuse(variante("ellipse", { cy: mauvaises[i] }), "ellipse cy n° " + i);
+      refuse(variante("text", { y: mauvaises[i] }), "text y n° " + i);
+    }
+    accepte(variante("line", { x1: 10.5, y1: 0 }), "décimales et zéro");
+  });
+
+  test("tailles nulles ou négatives : refusées", function () {
+    refuse(variante("rect", { width: 0 }), "rect de largeur 0");
+    refuse(variante("rect", { height: -10 }), "rect de hauteur négative");
+    refuse(variante("rect", { rx: -1 }), "rect d’arrondi négatif");
+    refuse(variante("rect", { ry: -1 }), "rect d’arrondi vertical négatif");
+    refuse(variante("circle", { r: 0 }), "cercle de rayon 0");
+    refuse(variante("circle", { r: -5 }), "cercle de rayon négatif");
+    refuse(variante("ellipse", { rx: 0 }), "ellipse de rayon 0");
+    refuse(variante("ellipse", { ry: -2 }), "ellipse de rayon négatif");
+    accepte(variante("rect", { rx: 0, ry: 0 }), "rect d’arrondi nul");
+  });
+
+  test("classe absente, inconnue, multiple ou mal typée : refusée", function () {
+    var mauvaises = [undefined, "", "rouge", "Trait", "trait ", " trait", "trait accent", "trait leger", "ombre forte",
+      "etiquette accent", "fleche trait", "toString", "constructor", 1, null, true, ["trait"], { nom: "trait" }];
+    var i;
+    for (i = 0; i < mauvaises.length; i++) {
+      refuse(variante("line", { classe: mauvaises[i] }), "classe n° " + i + " (" + stable(mauvaises[i]) + ")");
+    }
+  });
+
+  test("classe « fleche » : seulement sur line et path", function () {
+    var refusees = ["rect", "circle", "ellipse", "polyline", "polygon", "text"];
+    var i;
+    accepte(variante("line", { classe: "fleche" }));
+    accepte(variante("path", { classe: "fleche" }));
+    for (i = 0; i < refusees.length; i++) {
+      refuse(variante(refusees[i], { classe: "fleche" }), refusees[i] + " en fleche");
+    }
+  });
+
+  test("classes de texte : « etiquette » et « etiquette-accent » pour text, et pour text seulement", function () {
+    var autres = ["line", "rect", "circle", "ellipse", "polyline", "polygon", "path"];
+    var classes = ["trait", "leger", "pointille", "accent", "plein", "ombre", "ombre-forte", "surligne"];
+    var i;
+    for (i = 0; i < autres.length; i++) {
+      refuse(variante(autres[i], { classe: "etiquette" }), autres[i] + " en etiquette");
+      refuse(variante(autres[i], { classe: "etiquette-accent" }), autres[i] + " en etiquette-accent");
+    }
+    for (i = 0; i < classes.length; i++) {
+      refuse(variante("text", { classe: classes[i] }), "text en " + classes[i]);
+    }
+  });
+
+  test("texte : obligatoire et non vide pour « text », interdit ailleurs", function () {
+    var attributs = { x: 160, y: 150, classe: "etiquette" };
+    var mauvais = ["", "   ", 42, null, undefined, true, ["cube"], { texte: "cube" }];
+    var autres = ["line", "rect", "circle", "ellipse", "polyline", "polygon", "path"];
+    var i, f;
+    refuse(["text", attributs], "text sans troisième élément");
+    for (i = 0; i < mauvais.length; i++) {
+      refuse(["text", attributs, mauvais[i]], "texte n° " + i + " (" + stable(mauvais[i]) + ")");
+    }
+    accepte(["text", attributs, "cube"]);
+    accepte(["text", attributs, "<b>à l’œil</b> & co"], "le texte est libre : il sera affiché tel quel");
+    for (i = 0; i < autres.length; i++) {
+      f = formesValides()[autres[i]];
+      f.push("un texte en trop");
+      refuse(f, autres[i] + " avec un texte");
+    }
+  });
+
+  test("ancre : start, middle ou end, sur un texte seulement", function () {
+    var mauvaises = ["center", "left", "Middle", "", "milieu", 1, null, true];
+    var i;
+    accepte(variante("text", { ancre: "start" }));
+    accepte(variante("text", { ancre: "middle" }));
+    accepte(variante("text", { ancre: "end" }));
+    for (i = 0; i < mauvaises.length; i++) {
+      refuse(variante("text", { ancre: mauvaises[i] }), "ancre n° " + i + " (" + stable(mauvaises[i]) + ")");
+    }
+    refuse(variante("line", { ancre: "middle" }), "ancre sur line");
+  });
+
+  test("points : de la forme « x,y x,y ... », au moins 2 points (3 pour un polygone)", function () {
+    var bons = ["10,10 50,40", "10,10 50,40 90,10 120,60", "10.5,10.25 50,40", "0,0 320,160", "10,10  50,40   90,10"];
+    var mauvais = ["", "10,10", "10 10 50 40", "10,10;50,40", "10,10 50", "10,10,50,40", "a,b c,d", " 10,10 50,40", "10,10 50,40 ",
+      "10, 10 50, 40", "10,10 50,40,", "1e2,10 50,40", "+10,10 50,40", "10,10 50,40 NaN,NaN", "10,10" + String.fromCharCode(10) + "50,40", ".5,10 50,40",
+      "10,10 url(#a)", 42, null, ["10,10", "50,40"], { 0: "10,10" }];
+    var i;
+    for (i = 0; i < bons.length; i++) {
+      accepte(variante("polyline", { points: bons[i] }), "points « " + bons[i] + " »");
+    }
+    for (i = 0; i < mauvais.length; i++) {
+      refuse(variante("polyline", { points: mauvais[i] }), "polyline, points n° " + i + " (" + stable(mauvais[i]) + ")");
+      refuse(variante("polygon", { points: mauvais[i] }), "polygon, points n° " + i);
+    }
+    accepte(variante("polyline", { points: "10,10 50,40" }), "polyligne de 2 points");
+    refuse(variante("polygon", { points: "10,10 50,40" }), "polygone de 2 points");
+    accepte(variante("polygon", { points: "10,10 50,40 90,10" }), "polygone de 3 points");
+    accepte(variante("polyline", { points: "-0,10 50,40" }), "zéro négatif");
+    refuse(variante("polyline", { points: "-5,10 50,40" }), "coordonnée négative : hors du cadre");
+    for (i = 0; i < mauvais.length; i++) {
+      egal(L.validerForme(variante("polyline", { points: mauvais[i] })).ok, false, "sans cadre, points n° " + i);
+    }
+  });
+
+  test("points et d : 2000 caractères au plus", function () {
+    var points = "10,10" + new Array(200).join(" 50,40");
+    var trace = "M10 10" + new Array(200).join(" L50 50");
+    verifier(points.length < 2000 && trace.length < 2000, "textes d’essai trop longs");
+    accepte(variante("polyline", { points: points }), "points de " + points.length + " caractères");
+    accepte(variante("path", { d: trace, classe: "trait" }), "d de " + trace.length + " caractères");
+    points = "10,10" + new Array(400).join(" 50,40");
+    trace = "M10 10" + new Array(400).join(" L50 50");
+    verifier(points.length > 2000 && trace.length > 2000, "textes d’essai trop courts");
+    refuse(variante("polyline", { points: points }), "points de " + points.length + " caractères");
+    refuse(variante("path", { d: trace, classe: "trait" }), "d de " + trace.length + " caractères");
+    egal(L.validerForme(variante("polyline", { points: points })).ok, false, "points trop longs, sans cadre");
+    egal(L.validerForme(variante("path", { d: trace, classe: "trait" })).ok, false, "d trop long, sans cadre");
+  });
+
+  test("d : toutes les commandes permises, en coordonnées absolues", function () {
+    var bons = [
+      "M10 10 L50 50",
+      "M 10 10 L 50 50 H 80 V 20 Z",
+      "M10,10L50,50H80V20Z",
+      "M 20 80 C 40 10 100 10 120 80 S 200 150 220 80",
+      "M 20 80 Q 60 10 100 80 T 180 80",
+      "M 60 80 A 40 40 0 0 1 140 80",
+      "M 60 80 A 40 20 30 1 0 140 80 Z",
+      "M10 10 L50 50 L90 10 L130 50",
+      "M10 10 50 50 90 10",
+      "M 10 10 L 50 50 M 100 100 L 150 120",
+      "M 10.5 10.25 L 50.75 50",
+      "M10 80 Q 95 10 180 80",
+      "  M 10 10 L 50 50  ",
+      "M 10 , 10 L 50 ,50",
+      "M 10 10" + String.fromCharCode(10) + "L 50 50",
+      "M 10 10" + String.fromCharCode(9) + "L 50 50" + String.fromCharCode(13, 10),
+      "M.5 .5 L 50.25 50",
+      "M10-0L50 50",
+      "M 60 80 A 40 40 0 1 1 140 80"
+    ];
+    var i;
+    for (i = 0; i < bons.length; i++) {
+      accepte(variante("path", { d: bons[i], classe: "trait" }), "d « " + bons[i] + " »");
+      pareil(L.validerForme(variante("path", { d: bons[i], classe: "trait" })), { ok: true }, "sans cadre, d « " + bons[i] + " »");
+    }
+  });
+
+  test("d : commandes relatives, lettres inconnues, mauvais nombre de valeurs : refusés", function () {
+    var mauvais = [
+      "", "   ", "L10 10 L50 50", "10 10 L50 50", "Z", "M10 10 l40 40", "m10 10 L50 50", "M10 10 h40", "M10 10 v40",
+      "M10 10 c 1 1 2 2 3 3", "M10 10 q 1 1 2 2", "M10 10 a 5 5 0 0 1 20 20", "M10 10 L50 50 z", "M10 10 s 1 1 2 2", "M10 10 t 5 5",
+      "M10", "M10 10 L50", "M10 10 L50 50 60", "M10 10 H", "M10 10 V 20 30 Z 5", "M10 10 C 1 1 2 2 3", "M10 10 Q 1 1 2",
+      "M10 10 A 5 5 0 0 1 20", "M10 10 A 5 5 0 2 1 20 20", "M10 10 A 5 5 0 0 3 20 20", "M10 10 A -5 5 0 0 1 20 20",
+      "M10 10 Z 20 20", "M10 10 X 20 20", "M10 10 B 20 20", "M10 10 L50 50 E", "M1e2 10 L50 50", "M10 10 L+50 50",
+      "M10 10 L50 50;", "M10 10 L50 50 url(#a)", "M10 10 L50px 50", "M10 10 L50 50 <script>", "M10 10 L NaN 50",
+      "M10 10 L Infinity 50", 42, null, undefined, ["M10 10 L50 50"], { d: "M10 10 L50 50" },
+      "M10 10 A 5 -5 0 0 1 20 20"
+    ];
+    var i;
+    for (i = 0; i < mauvais.length; i++) {
+      refuse(variante("path", { d: mauvais[i], classe: "trait" }), "d n° " + i + " (" + stable(mauvais[i]) + ")");
+      /* Le refus ne doit rien au cadre : il vaut aussi quand on ne le fournit pas. */
+      egal(L.validerForme(variante("path", { d: mauvais[i], classe: "trait" })).ok, false, "sans cadre, d n° " + i);
+    }
+  });
+
+  test("d : rien de plus que la grammaire des tracés SVG (séparateurs, virgules, drapeaux d’arc)", function () {
+    /* Un navigateur arrête le dessin à la première erreur : ces tracés seraient tronqués. */
+    var mauvais = [
+      "M10 10 L50" + String.fromCharCode(160) + "50", "M10 10 L50 50" + String.fromCharCode(8232),
+      "M10 10" + String.fromCharCode(12) + "L50 50", String.fromCharCode(65279) + "M10 10 L50 50",
+      ",M 10 10 L 50 50", "M 10 10 , , L 50 50", "M,10 10 L 50 50", "M 10 10, L 50 50", "M 10 10 L 50 50,",
+      "M 10 10 L 50 50 ,", "M 10,,10 L 50 50", "M 10 10 L 50 50 , Z", "M 10 10 Z,",
+      "M 10 10 A 5 5 0 01 1 50 50", "M 10 10 A 5 5 0 1.0 1 50 50", "M 10 10 A 5 5 0 0 -0 50 50", "M 10 10 A 5 5 0 0 0.0 50 50",
+      "M 10 10 L 50. 50", "M 10. 10 L 50 50", "M 10 10 L 50 50."
+    ];
+    var i;
+    for (i = 0; i < mauvais.length; i++) {
+      refuse(variante("path", { d: mauvais[i], classe: "trait" }), "d n° " + i + " (" + stable(mauvais[i]) + ")");
+      egal(L.validerForme(variante("path", { d: mauvais[i], classe: "trait" })).ok, false, "sans cadre, d n° " + i);
+    }
+  });
+
+  test("transform : exactement rotate(angle cx cy)", function () {
+    var bons = ["rotate(-90 160 80)", "rotate(0 160 80)", "rotate(180 160 80)", "rotate(12.5 160.5 80.25)", "rotate(-45.75 160 80)"];
+    var mauvais = ["rotate(45)", "rotate(45 160)", "rotate(45,160,80)", "rotate(45, 160, 80)", "rotate(45  160 80)", "rotate( 45 160 80 )",
+      " rotate(45 160 80)", "rotate(45 160 80) ", "Rotate(45 160 80)", "rotate(45 160 80) rotate(45 160 80)",
+      "rotate(45 160 80) translate(5 5)", "translate(10 10)", "translate(10)", "scale(2)", "scale(1 2)", "skewX(10)",
+      "matrix(1 0 0 1 0 0)", "rotate(a b c)", "rotate(45deg 160 80)", "rotate(1e2 160 80)", "rotate(45 160 80 5)", "", "none",
+      45, null, true, ["rotate(45 160 80)"]];
+    var i;
+    for (i = 0; i < bons.length; i++) {
+      accepte(variante("text", { x: 160, y: 80, transform: bons[i] }), "transform « " + bons[i] + " »");
+    }
+    for (i = 0; i < mauvais.length; i++) {
+      refuse(variante("text", { x: 160, y: 80, transform: mauvais[i] }), "transform n° " + i + " (" + stable(mauvais[i]) + ")");
+      refuse(variante("rect", { transform: mauvais[i] }), "rect, transform n° " + i);
+    }
+  });
+
+  test("cadre : une forme qui dépasse de 320 × 160 est refusée, une forme au ras du bord est acceptée", function () {
+    accepte(["line", { x1: 0, y1: 0, x2: 320, y2: 160, classe: "trait" }], "diagonale du cadre");
+    refuse(variante("line", { x2: 321 }), "line trop à droite");
+    refuse(variante("line", { x1: -1 }), "line trop à gauche");
+    refuse(variante("line", { y2: 161 }), "line trop bas");
+    refuse(variante("line", { y1: -0.5 }), "line trop haut");
+    accepte(["rect", { x: 0, y: 0, width: 320, height: 160, classe: "trait" }], "rect plein cadre");
+    refuse(variante("rect", { x: 300, width: 30 }), "rect qui dépasse par sa largeur");
+    refuse(variante("rect", { y: 150, height: 20 }), "rect qui dépasse par sa hauteur");
+    accepte(variante("circle", { cx: 80, cy: 80, r: 80 }), "cercle tangent aux bords");
+    refuse(variante("circle", { cx: 20, r: 30 }), "cercle qui dépasse à gauche");
+    refuse(variante("circle", { cy: 150, r: 20 }), "cercle qui dépasse en bas");
+    refuse(variante("ellipse", { cx: 300, rx: 30 }), "ellipse qui dépasse à droite");
+    refuse(variante("ellipse", { cy: 10, ry: 20 }), "ellipse qui dépasse en haut");
+    refuse(variante("polyline", { points: "10,10 400,20" }), "polyligne qui sort");
+    refuse(variante("polygon", { points: "10,10 50,200 90,10" }), "polygone qui sort");
+    refuse(variante("text", { x: 330 }), "texte ancré hors du cadre");
+    refuse(variante("text", { y: 170 }), "texte ancré sous le cadre");
+  });
+
+  test("cadre : les points de passage d’un tracé sont vérifiés, pas ses points de contrôle", function () {
+    refuse(variante("path", { d: "M10 10 L 330 20", classe: "trait" }), "L hors cadre");
+    refuse(variante("path", { d: "M-5 10 L 30 20", classe: "trait" }), "M hors cadre");
+    refuse(variante("path", { d: "M10 10 H 400", classe: "trait" }), "H hors cadre");
+    refuse(variante("path", { d: "M10 10 V 400", classe: "trait" }), "V hors cadre");
+    refuse(variante("path", { d: "M10 10 L 100 100 H 50 V 161", classe: "trait" }), "V hors cadre après H");
+    refuse(variante("path", { d: "M10 10 A 20 20 0 0 1 500 20", classe: "trait" }), "arc qui finit hors cadre");
+    refuse(variante("path", { d: "M10 10 C 20 20 30 30 40 200", classe: "trait" }), "courbe qui finit hors cadre");
+    refuse(variante("path", { d: "M10 10 Q 20 20 30 30 T 400 30", classe: "trait" }), "T hors cadre");
+    accepte(variante("path", { d: "M 10 80 Q 160 -100 310 80", classe: "trait" }), "point de contrôle hors cadre");
+    accepte(variante("path", { d: "M 10 80 C 10 -50 310 400 310 80", classe: "trait" }), "points de contrôle hors cadre");
+    accepte(variante("path", { d: "M 10 10 H 310 V 150 H 10 Z", classe: "trait" }), "tour du cadre");
+  });
+
+  test("cadre : la rotation est prise en compte", function () {
+    accepte(variante("text", { x: 20, y: 100, transform: "rotate(-90 20 100)" }), "étiquette verticale");
+    accepte(["line", { x1: 160, y1: 80, x2: 300, y2: 80, classe: "trait" }], "ligne sans rotation");
+    refuse(["line", { x1: 160, y1: 80, x2: 300, y2: 80, transform: "rotate(90 160 80)", classe: "trait" }], "ligne tournée vers le bas");
+    refuse(["line", { x1: 160, y1: 80, x2: 300, y2: 80, transform: "rotate(-90 160 80)", classe: "trait" }], "ligne tournée vers le haut");
+    accepte(["line", { x1: 160, y1: 80, x2: 300, y2: 80, transform: "rotate(180 160 80)", classe: "trait" }], "ligne retournée");
+    accepte(["line", { x1: 160, y1: 80, x2: 160, y2: 220, transform: "rotate(-90 160 80)", classe: "trait" }],
+      "ligne hors cadre avant rotation, dedans après");
+    accepte(["rect", { x: 100, y: 60, width: 120, height: 40, transform: "rotate(90 160 80)", classe: "trait" }], "rect tourné, dedans");
+    refuse(["rect", { x: 60, y: 60, width: 200, height: 40, transform: "rotate(90 160 80)", classe: "trait" }], "rect tourné, dehors");
+    accepte(["circle", { cx: 160, cy: 80, r: 70, transform: "rotate(45 160 80)", classe: "trait" }], "cercle tourné sur lui-même");
+    refuse(["circle", { cx: 300, cy: 80, r: 10, transform: "rotate(90 160 80)", classe: "trait" }], "cercle emmené hors du cadre");
+    refuse(["ellipse", { cx: 160, cy: 80, rx: 100, ry: 20, transform: "rotate(90 160 80)", classe: "trait" }], "ellipse dressée");
+    refuse(["polyline", { points: "160,80 300,80", transform: "rotate(90 160 80)", classe: "trait" }], "polyligne tournée");
+    refuse(["path", { d: "M160 80 H 300", transform: "rotate(90 160 80)", classe: "trait" }], "tracé tourné");
+  });
+
+  test("cadre : le sens de la rotation compte (angle positif = sens des aiguilles d’une montre)", function () {
+    /* Ligne horizontale en haut du cadre : à 30 degrés son bout descend à y = 90, à -30 il monte à y = -50. */
+    accepte(["line", { x1: 160, y1: 20, x2: 300, y2: 20, transform: "rotate(30 160 20)", classe: "trait" }], "ligne tournée de 30 degrés");
+    refuse(["line", { x1: 160, y1: 20, x2: 300, y2: 20, transform: "rotate(-30 160 20)", classe: "trait" }], "ligne tournée de -30 degrés");
+    accepte(["polyline", { points: "160,140 300,140", transform: "rotate(-30 160 140)", classe: "trait" }], "polyligne du bas tournée de -30 degrés");
+    refuse(["polyline", { points: "160,140 300,140", transform: "rotate(30 160 140)", classe: "trait" }], "polyligne du bas tournée de 30 degrés");
+  });
+
+  test("cadre : les quatre coins d’un rectangle tourné sont vérifiés", function () {
+    /* Carré tourné de 45 degrés autour de son centre : seule sa pointe droite sort (x = 350,7). */
+    refuse(["rect", { x: 230, y: 30, width: 100, height: 100, transform: "rotate(45 280 80)", classe: "trait" }], "pointe droite hors cadre");
+    refuse(["rect", { x: 110, y: 30, width: 100, height: 100, transform: "rotate(45 110 30)", classe: "trait" }], "pointe basse hors cadre");
+    accepte(["rect", { x: 110, y: 30, width: 100, height: 100, transform: "rotate(45 160 80)", classe: "trait" }], "carré sur la pointe, dedans");
+  });
+
+  test("cadre : une ellipse tournée est jugée sur sa vraie boîte, pas sur ses quatre sommets", function () {
+    var penchee = ["ellipse", { cx: 160, cy: 80, rx: 100, ry: 40, transform: "rotate(45 160 80)", classe: "trait" }];
+    refuse(["ellipse", { cx: 40, cy: 80, rx: 50, ry: 50, transform: "rotate(45 40 80)", classe: "trait" }],
+      "ellipse ronde qui dépasse à gauche (x de -10 à 90)");
+    refuse(["ellipse", { cx: 160, cy: 60, rx: 80, ry: 70, transform: "rotate(45 160 60)", classe: "trait" }],
+      "ellipse penchée qui dépasse en haut (y = -15,2)");
+    accepte(["ellipse", { cx: 160, cy: 80, rx: 60, ry: 20, transform: "rotate(30 160 80)", classe: "trait" }], "ellipse penchée, dedans");
+    accepte(["ellipse", { cx: 160, cy: 80, rx: 20, ry: 70, transform: "rotate(90 160 80)", classe: "trait" }], "ellipse couchée, dedans");
+    refuse(["ellipse", { cx: 160, cy: 80, rx: 70, ry: 20, transform: "rotate(90 300 80)", classe: "trait" }], "ellipse emmenée hors du cadre");
+    /* Sommets à 9,3 du bord, mais la courbe passe à 3,8 : dedans sans marge, dehors avec une marge de 6. */
+    accepte(penchee, "ellipse à 45 degrés, sans marge");
+    egal(L.validerForme(penchee, 320, 160, 6).ok, false, "ellipse à 45 degrés, marge de 6");
+    egal(L.validerForme(penchee, 320, 160, 3).ok, true, "ellipse à 45 degrés, marge de 3");
+    pareil(L.validerForme(["ellipse", { cx: 40, cy: 80, rx: 50, ry: 50, transform: "rotate(45 40 80)", classe: "trait" }]), { ok: true },
+      "sans cadre, pas de limite");
+  });
+
+  test("cadre et marge : facultatifs, mais vérifiés quand ils sont fournis", function () {
+    var loin = ["line", { x1: -50, y1: -50, x2: 900, y2: 900, classe: "trait" }];
+    var bord = ["line", { x1: 4, y1: 80, x2: 316, y2: 80, classe: "trait" }];
+    var dedans = ["line", { x1: 6, y1: 6, x2: 314, y2: 154, classe: "trait" }];
+    pareil(L.validerForme(loin), { ok: true }, "sans cadre, pas de limite");
+    egal(L.validerForme(loin, 320, 160).ok, false);
+    egal(L.validerForme(loin, 1000, 1000).ok, false, "coordonnées négatives");
+    egal(L.validerForme(bord, 320, 160).ok, true, "sans marge");
+    egal(L.validerForme(bord, 320, 160, 0).ok, true, "marge 0");
+    egal(L.validerForme(bord, 320, 160, 6).ok, false, "à 4 du bord avec une marge de 6");
+    egal(L.validerForme(dedans, 320, 160, 6).ok, true, "juste à 6 du bord");
+    egal(L.validerForme(dedans, 320, 160, L.SCHEMA_MARGE).ok, true);
+    egal(L.validerForme(["circle", { cx: 20, cy: 80, r: 16, classe: "trait" }], 320, 160, 6).ok, false, "cercle à 4 du bord");
+    egal(L.validerForme(["circle", { cx: 22, cy: 80, r: 16, classe: "trait" }], 320, 160, 6).ok, true, "cercle à 6 du bord");
+    egal(L.validerForme(bord, 320).ok, false, "hauteur manquante");
+    egal(L.validerForme(bord, undefined, 160).ok, false, "largeur manquante");
+    egal(L.validerForme(bord, "320", 160).ok, false, "largeur en chaîne");
+    egal(L.validerForme(bord, 320, NaN).ok, false, "hauteur NaN");
+    egal(L.validerForme(bord, 0, 160).ok, false, "largeur nulle");
+    egal(L.validerForme(bord, 320, -160).ok, false, "hauteur négative");
+    egal(L.validerForme(bord, 320, 160, -1).ok, false, "marge négative");
+    egal(L.validerForme(bord, 320, 160, "6").ok, false, "marge en chaîne");
+    egal(L.validerForme(bord, undefined, undefined, 6).ok, false, "marge sans cadre");
+  });
+
+  test("validerForme ne modifie pas la forme et ne lit pas les attributs hérités", function () {
+    var f = formesValides().path;
+    var avant = stable(f);
+    var herite = Object.create({ x1: 10, y1: 10, x2: 100, y2: 80, classe: "trait" });
+    var i, formes = formesValides();
+    L.validerForme(f, 320, 160);
+    L.validerForme(f, 320, 160, 6);
+    egal(stable(f), avant);
+    for (i = 0; i < L.SCHEMA_BALISES.length; i++) {
+      avant = stable(formes[L.SCHEMA_BALISES[i]]);
+      L.validerForme(formes[L.SCHEMA_BALISES[i]], 320, 160);
+      egal(stable(formes[L.SCHEMA_BALISES[i]]), avant, L.SCHEMA_BALISES[i]);
+    }
+    refuse(["line", herite], "attributs hérités d’un prototype");
+  });
+
+  test("chaque refus vient avec un message en français, et jamais d’exception", function () {
+    var cas = [null, [], ["g", {}], ["line", {}], ["line", { x1: "1", y1: 1, x2: 2, y2: 2, classe: "trait" }],
+      ["path", { d: "M10 10 l5 5", classe: "trait" }], ["text", { x: 1, y: 1, classe: "etiquette" }],
+      ["rect", { x: 1, y: 1, width: 1, height: 1, classe: "fleche" }], ["polygon", { points: "1,1", classe: "trait" }],
+      ["line", { x1: 1, y1: 1, x2: 999, y2: 2, classe: "trait" }], ["text", { x: 1, y: 1, classe: "etiquette", transform: "scale(2)" }, "a"]];
+    var vus = {};
+    var n = 0;
+    var i, r;
+    for (i = 0; i < cas.length; i++) {
+      r = L.validerForme(cas[i], 320, 160);
+      egal(r.ok, false, "cas n° " + i);
+      pareil(Object.keys(r).sort(), ["erreur", "ok"], "cas n° " + i);
+      verifier(typeof r.erreur === "string" && r.erreur.length > 15 && /[.»]$/.test(r.erreur), "message inattendu : " + stable(r.erreur));
+      if (vus[r.erreur] !== true) {
+        vus[r.erreur] = true;
+        n++;
+      }
+    }
+    verifier(n >= 9, "les messages devraient dire ce qui ne va pas : seulement " + n + " messages différents");
+  });
+
+  /* ================================================================== */
+  groupe("Schémas : validerSchema");
+  /* ================================================================== */
+
+  test("un schéma complet et conforme est accepté", function () {
+    var bloc = schemaFactice();
+    pareil(L.validerSchema(bloc), { ok: true });
+    bloc.hauteur = 120;
+    bloc.formes = [["line", { x1: 10, y1: 10, x2: 100, y2: 100, classe: "trait" }]];
+    pareil(L.validerSchema(bloc), { ok: true }, "hauteur minimale, une seule forme");
+    bloc.hauteur = 240;
+    pareil(L.validerSchema(bloc), { ok: true }, "hauteur maximale");
+    pareil(L.validerSchema(chapitreFactice(1, 1).blocs[1]), { ok: true });
+  });
+
+  test("ce qui n’est pas un bloc de schéma est refusé", function () {
+    var mauvais = [undefined, null, 42, "schema", [], {}, { type: "texte", contenu: "Bonjour." }, { type: "Schema" }];
+    var i, bloc;
+    for (i = 0; i < mauvais.length; i++) {
+      schemaRefuse(mauvais[i], "bloc n° " + i);
+    }
+    bloc = schemaFactice();
+    delete bloc.type;
+    schemaRefuse(bloc, "sans type");
+    bloc = Object.create(schemaFactice());
+    schemaRefuse(bloc, "champs hérités d’un prototype");
+  });
+
+  test("largeur : exactement 320", function () {
+    var mauvaises = [300, 321, 319.5, 0, -320, "320", null, undefined, NaN, [320]];
+    var i, bloc;
+    for (i = 0; i < mauvaises.length; i++) {
+      bloc = schemaFactice();
+      if (mauvaises[i] === undefined) {
+        delete bloc.largeur;
+      } else {
+        bloc.largeur = mauvaises[i];
+      }
+      schemaRefuse(bloc, "largeur n° " + i + " (" + stable(mauvaises[i]) + ")");
+    }
+  });
+
+  test("hauteur : un nombre de 120 à 240", function () {
+    var mauvaises = [119, 241, 0, -160, 1000, "160", null, undefined, NaN, Infinity, [160]];
+    var bonnes = [120, 121, 160, 180.5, 239, 240];
+    var petite = ["line", { x1: 10, y1: 10, x2: 100, y2: 100, classe: "trait" }];
+    var i, bloc;
+    for (i = 0; i < mauvaises.length; i++) {
+      bloc = schemaFactice();
+      bloc.formes = [petite];
+      if (mauvaises[i] === undefined) {
+        delete bloc.hauteur;
+      } else {
+        bloc.hauteur = mauvaises[i];
+      }
+      schemaRefuse(bloc, "hauteur n° " + i + " (" + stable(mauvaises[i]) + ")");
+    }
+    for (i = 0; i < bonnes.length; i++) {
+      bloc = schemaFactice();
+      bloc.formes = [petite];
+      bloc.hauteur = bonnes[i];
+      pareil(L.validerSchema(bloc), { ok: true }, "hauteur " + bonnes[i]);
+    }
+  });
+
+  test("légende et description (alt) : obligatoires et non vides", function () {
+    var mauvaises = ["", "   ", 42, null, undefined, ["Un cube."], { texte: "Un cube." }];
+    var i, bloc;
+    for (i = 0; i < mauvaises.length; i++) {
+      bloc = schemaFactice();
+      if (mauvaises[i] === undefined) {
+        delete bloc.legende;
+      } else {
+        bloc.legende = mauvaises[i];
+      }
+      schemaRefuse(bloc, "légende n° " + i);
+      bloc = schemaFactice();
+      if (mauvaises[i] === undefined) {
+        delete bloc.alt;
+      } else {
+        bloc.alt = mauvaises[i];
+      }
+      schemaRefuse(bloc, "alt n° " + i);
+    }
+  });
+
+  test("formes : un tableau de 1 à 40 formes", function () {
+    var bloc = schemaFactice();
+    var i;
+    bloc.formes = [];
+    schemaRefuse(bloc, "aucune forme");
+    bloc.formes = "line";
+    schemaRefuse(bloc, "formes en chaîne");
+    bloc.formes = { 0: ["line", { x1: 10, y1: 10, x2: 100, y2: 100, classe: "trait" }], length: 1 };
+    schemaRefuse(bloc, "formes en objet");
+    delete bloc.formes;
+    schemaRefuse(bloc, "formes absentes");
+    bloc.formes = [];
+    for (i = 0; i < 40; i++) {
+      bloc.formes.push(["line", { x1: 10, y1: 10 + i, x2: 100, y2: 10 + i, classe: "leger" }]);
+    }
+    pareil(L.validerSchema(bloc), { ok: true }, "40 formes");
+    bloc.formes.push(["line", { x1: 10, y1: 60, x2: 100, y2: 60, classe: "leger" }]);
+    schemaRefuse(bloc, "41 formes");
+  });
+
+  test("une seule forme invalide fait refuser le schéma, et le message donne son numéro", function () {
+    var bloc = schemaFactice();
+    var erreur;
+    bloc.formes[2] = ["line", { x1: 20, y1: 40, x2: 300, y2: 40, classe: "rouge" }];
+    erreur = schemaRefuse(bloc, "classe inconnue");
+    verifier(erreur.indexOf("Forme n° 3") === 0, "le message devrait commencer par « Forme n° 3 » : " + erreur);
+    bloc = schemaFactice();
+    bloc.formes.push(["image", { x: 10, y: 10, width: 10, height: 10, classe: "trait" }]);
+    erreur = schemaRefuse(bloc, "balise interdite");
+    verifier(erreur.indexOf("Forme n° 6") === 0, "le message devrait commencer par « Forme n° 6 » : " + erreur);
+    bloc = schemaFactice();
+    bloc.formes[0] = null;
+    schemaRefuse(bloc, "forme null");
+  });
+
+  test("le cadre du schéma est celui de ses dimensions : une forme sous la hauteur déclarée est refusée", function () {
+    var bloc = schemaFactice();
+    bloc.formes.push(["line", { x1: 20, y1: 150, x2: 300, y2: 150, classe: "trait" }]);
+    pareil(L.validerSchema(bloc), { ok: true }, "y = 150 dans un cadre de 160");
+    bloc.hauteur = 140;
+    schemaRefuse(bloc, "y = 150 dans un cadre de 140");
+    bloc.hauteur = 240;
+    bloc.formes.push(["line", { x1: 20, y1: 230, x2: 330, y2: 230, classe: "trait" }]);
+    schemaRefuse(bloc, "x = 330 dans un cadre de 320");
+  });
+
+  test("propriété inconnue dans un schéma : refusée", function () {
+    var inconnues = ["titre", "viewBox", "style", "couleur", "contenu", "elements", "onload"];
+    var i, bloc;
+    for (i = 0; i < inconnues.length; i++) {
+      bloc = schemaFactice();
+      bloc[inconnues[i]] = "x";
+      schemaRefuse(bloc, "propriété « " + inconnues[i] + " »");
+    }
+  });
+
+  test("validerSchema ne modifie pas le bloc", function () {
+    var bloc = schemaFactice();
+    var avant = stable(bloc);
+    L.validerSchema(bloc);
+    egal(stable(bloc), avant);
+    bloc.formes.push(["g", {}]);
+    avant = stable(bloc);
+    L.validerSchema(bloc);
+    egal(stable(bloc), avant);
+  });
+
+  /* ================================================================== */
+  groupe("État : favoris et guide");
+  /* ================================================================== */
+
+  test("etatInitial contient des favoris vides et un guide vide", function () {
+    var etat = L.etatInitial();
+    pareil(etat.favoris, []);
+    pareil(etat.guide, { faits: {} });
+    egal(etat.version, 1, "la version reste 1");
+    verifier(L.etatInitial().favoris !== etat.favoris && L.etatInitial().guide.faits !== etat.guide.faits, "objets partagés entre deux états initiaux");
+  });
+
+  test("ancienne sauvegarde sans favoris ni guide : acceptée et complétée, version 1", function () {
+    var ancienne = "{'version':1,'jours':{'2026-03-09':{'exerciceId':'lun-03','titre':'Des lignes droites'," +
+      "'themeNom':'Lignes et échauffement','duree':20,'ressenti':'bien','faitLe':'2026-03-09T18:30:00.000Z'}}," +
+      "'tirage':{'date':'2026-03-09','n':1},'reglages':{'duree':30,'theme':'sombre','son':false},'paliersVus':[1]}";
+    var r = L.depuisJSON(ancienne.replace(/'/g, String.fromCharCode(34)));
+    egal(r.ok, true);
+    egal(r.etat.version, 1);
+    pareil(r.etat.favoris, []);
+    pareil(r.etat.guide, { faits: {} });
+    egal(r.etat.jours["2026-03-09"].titre, "Des lignes droites", "les jours sont gardés");
+    pareil(r.etat.reglages, { duree: 30, theme: "sombre", son: false });
+    pareil(r.etat.tirage, { date: "2026-03-09", n: 1 });
+    pareil(r.etat.paliersVus, [1]);
+    pareil(Object.keys(r.etat).sort(), ["favoris", "guide", "jours", "paliersVus", "reglages", "tirage", "version"]);
+    egal(L.depuisJSON(L.versJSON(r.etat)).ok, true, "et elle se réexporte");
+  });
+
+  test("validerEtat rend à l’identique des favoris et un guide valides", function () {
+    var etat = L.etatInitial();
+    var r;
+    etat.favoris = [
+      { texte: "Une sorcière qui danse sur un toit", categorieCle: "personnage", ajouteLe: "2026-11-16T09:30:00.000Z" },
+      { texte: "Une île, à l’aube", categorieCle: "lieu", ajouteLe: "2026-11-15T20:00:00.000Z" },
+      { texte: "Idée notée à la main", categorieCle: "", ajouteLe: "" }
+    ];
+    etat.guide = { faits: { g01: "2026-11-10", g02: "2026-11-12", g12: "2028-02-29" } };
+    r = L.validerEtat(etat);
+    egal(r.ok, true);
+    pareil(r.etat, etat);
+    verifier(r.etat.favoris !== etat.favoris && r.etat.favoris[0] !== etat.favoris[0], "les favoris sont partagés avec la source");
+    verifier(r.etat.guide !== etat.guide && r.etat.guide.faits !== etat.guide.faits, "le guide est partagé avec la source");
+  });
+
+  test("favoris illisibles : remplacés par une liste vide", function () {
+    var valeurs = [null, undefined, "tous", 42, true, {}, { 0: { texte: "Idée" }, length: 1 }, { texte: "Idée" }];
+    var i;
+    for (i = 0; i < valeurs.length; i++) {
+      pareil(L.validerEtat({ version: 1, favoris: valeurs[i] }).etat.favoris, [], "valeur n° " + i);
+    }
+  });
+
+  test("favoris : entrées invalides écartées, champs nettoyés, propriétés inconnues ignorées", function () {
+    var longue = new Array(1001).join("é");
+    var r = L.validerEtat({ version: 1, favoris: [
+      null, "Une idée en texte", 42, [], true, {}, { texte: "" }, { texte: "    " }, { texte: 12 }, { texte: null },
+      { texte: ["Idée"] }, { categorieCle: "lieu", ajouteLe: "2026-11-16T09:30:00.000Z" },
+      { texte: "  Gardée  ", categorieCle: "lieu", ajouteLe: "2026-11-16T09:30:00.000Z", note: "inconnue", dessin: "data:image/png;base64,AAAA" },
+      { texte: "Catégorie douteuse", categorieCle: "pas une clé !", ajouteLe: "2026-11-16T09:30:00.000Z" },
+      { texte: "Catégorie mal typée", categorieCle: 7, ajouteLe: 1773000000000 },
+      { texte: "Date douteuse", categorieCle: "objet", ajouteLe: "hier soir" },
+      { texte: "Date démesurée", categorieCle: new Array(100).join("a"), ajouteLe: new Array(100).join("2") },
+      { texte: longue, categorieCle: "scene", ajouteLe: "2026-11-16T09:30:00.000Z" }
+    ] });
+    var f = r.etat.favoris;
+    var i;
+    egal(r.ok, true);
+    egal(f.length, 6);
+    pareil(f[0], { texte: "Gardée", categorieCle: "lieu", ajouteLe: "2026-11-16T09:30:00.000Z" });
+    pareil(f[1], { texte: "Catégorie douteuse", categorieCle: "", ajouteLe: "2026-11-16T09:30:00.000Z" });
+    pareil(f[2], { texte: "Catégorie mal typée", categorieCle: "", ajouteLe: "" });
+    pareil(f[3], { texte: "Date douteuse", categorieCle: "objet", ajouteLe: "" });
+    pareil(f[4], { texte: "Date démesurée", categorieCle: "", ajouteLe: "" });
+    egal(f[5].texte.length, 300, "texte coupé à 300 caractères");
+    for (i = 0; i < f.length; i++) {
+      pareil(Object.keys(f[i]).sort(), ["ajouteLe", "categorieCle", "texte"], "favori n° " + i);
+    }
+  });
+
+  test("favoris : doublons retirés (le premier est gardé) et liste plafonnée à MAX_FAVORIS", function () {
+    var source = [];
+    var i, r;
+    r = L.validerEtat({ version: 1, favoris: [
+      { texte: "Même idée", categorieCle: "lieu", ajouteLe: "2026-11-16T09:30:00.000Z" },
+      { texte: "Autre idée", categorieCle: "objet", ajouteLe: "2026-11-15T09:30:00.000Z" },
+      { texte: " Même idée ", categorieCle: "scene", ajouteLe: "2026-11-14T09:30:00.000Z" },
+      { texte: "toString", categorieCle: "", ajouteLe: "" },
+      { texte: "__proto__", categorieCle: "", ajouteLe: "" },
+      { texte: "__proto__", categorieCle: "", ajouteLe: "" }
+    ] });
+    egal(r.etat.favoris.length, 4);
+    egal(r.etat.favoris[0].categorieCle, "lieu", "le premier des deux doublons est gardé");
+    egal(r.etat.favoris[3].texte, "__proto__", "un texte piège reste un texte comme un autre");
+    egal(({}).texte, undefined);
+    for (i = 1; i <= 80; i++) {
+      source.push({ texte: "Idée n° " + i, categorieCle: "objet", ajouteLe: "2026-11-16T09:30:00.000Z" });
+    }
+    r = L.validerEtat({ version: 1, favoris: source });
+    egal(r.etat.favoris.length, 50);
+    egal(r.etat.favoris[0].texte, "Idée n° 1", "l’ordre reçu est gardé");
+    egal(r.etat.favoris[49].texte, "Idée n° 50", "les plus anciens, en fin de liste, sont écartés");
+  });
+
+  test("favoris : une liste démesurée est lue vite, seules les 1000 premières entrées sont examinées", function () {
+    var source = [];
+    var i, debut, r;
+    for (i = 0; i < 200000; i++) {
+      source.push(i === 1500 ? { texte: "Trop loin" } : (i === 999 ? { texte: "Juste à temps" } : null));
+    }
+    debut = Date.now();
+    r = L.validerEtat({ version: 1, favoris: source });
+    verifier(Date.now() - debut < 2000, "lecture trop lente : " + (Date.now() - debut) + " ms");
+    pareil(r.etat.favoris, [{ texte: "Juste à temps", categorieCle: "", ajouteLe: "" }]);
+  });
+
+  test("guide illisible : remplacé par un guide vide", function () {
+    var valeurs = [null, undefined, "g01", 42, true, [], ["g01"], {}, { faits: null }, { faits: "tous" }, { faits: ["g01"] },
+      { faits: 12 }, { fait: { g01: "2026-11-16" } }];
+    var i;
+    for (i = 0; i < valeurs.length; i++) {
+      pareil(L.validerEtat({ version: 1, guide: valeurs[i] }).etat.guide, { faits: {} }, "valeur n° " + i);
+    }
+  });
+
+  test("guide : clés et dates invalides écartées, propriétés inconnues ignorées", function () {
+    var r = L.validerEtat({ version: 1, guide: {
+      extra: true, progression: 5,
+      faits: {
+        g01: "2026-11-10", g12: "2026-11-12", g00: "2026-11-13", g99: "2028-02-29",
+        g1: "2026-11-10", g001: "2026-11-10", g123: "2026-11-10", G02: "2026-11-10", "g 2": "2026-11-10", chapitre: "2026-11-10",
+        "": "2026-11-10", "02": "2026-11-10", g0a: "2026-11-10", "g03 ": "2026-11-10", toString: "2026-11-10", constructor: "2026-11-10",
+        g03: "2026-02-30", g04: "2026-11-1", g05: "demain", g06: "", g07: null, g08: true, g09: 20261116, g10: { date: "2026-11-10" },
+        g11: ["2026-11-10"]
+      }
+    } });
+    egal(r.ok, true);
+    pareil(r.etat.guide, { faits: { g00: "2026-11-13", g01: "2026-11-10", g12: "2026-11-12", g99: "2028-02-29" } });
+    pareil(Object.keys(r.etat.guide), ["faits"]);
+    pareil(Object.keys(r.etat.guide.faits), ["g00", "g01", "g12", "g99"], "clés rangées dans l’ordre");
+  });
+
+  test("pollution de prototype par les favoris ou le guide : rien ne passe", function () {
+    var source = json("{'version':1," +
+      "'favoris':[{'__proto__':{'texte':'pollué','pollue':true}},{'texte':'Gardée','__proto__':{'categorieCle':'lieu'},'constructor':{'prototype':{'pollue':true}}}]," +
+      "'guide':{'__proto__':{'faits':{'g01':'2026-11-10'},'pollue':true},'faits':{'__proto__':{'g02':'2026-11-10','pollue':true},'constructor':'2026-11-10','g03':'2026-11-10'}}}");
+    var r = L.validerEtat(source);
+    var temoin = {};
+    egal(r.ok, true);
+    egal(temoin.pollue, undefined, "Object.prototype a été pollué");
+    egal(Object.prototype.pollue, undefined, "Object.prototype a été pollué");
+    egal(Array.prototype.pollue, undefined, "Array.prototype a été pollué");
+    pareil(r.etat.favoris, [{ texte: "Gardée", categorieCle: "", ajouteLe: "" }]);
+    pareil(r.etat.guide, { faits: { g03: "2026-11-10" } });
+    egal(r.etat.guide.pollue, undefined);
+    egal(r.etat.guide.faits.pollue, undefined);
+    egal(r.etat.favoris[0].pollue, undefined);
+    verifier(Object.getPrototypeOf(r.etat.guide) === Object.prototype, "prototype du guide inattendu");
+    verifier(Object.getPrototypeOf(r.etat.guide.faits) === Object.prototype, "prototype de guide.faits inattendu");
+    verifier(Object.getPrototypeOf(r.etat.favoris) === Array.prototype, "prototype des favoris inattendu");
+    verifier(Object.getPrototypeOf(r.etat.favoris[0]) === Object.prototype, "prototype d’un favori inattendu");
+    r = L.validerEtat(json("{'version':1,'guide':{'faits':{'__proto__':'2026-11-10'}},'favoris':{'__proto__':[{'texte':'x'}]}}"));
+    pareil(r.etat.guide, { faits: {} });
+    pareil(r.etat.favoris, []);
+    egal(L.chapitreFait(r.etat, "__proto__"), false);
+  });
+
+  test("favoris et guide hérités d’un prototype : pas lus", function () {
+    var source = Object.create({ favoris: [{ texte: "Hérité" }], guide: { faits: { g01: "2026-11-10" } } });
+    var guide = Object.create({ faits: { g01: "2026-11-10" } });
+    var faits = Object.create({ g01: "2026-11-10" });
+    var favori = Object.create({ texte: "Hérité", categorieCle: "lieu" });
+    var r;
+    source.version = 1;
+    r = L.validerEtat(source);
+    pareil(r.etat.favoris, []);
+    pareil(r.etat.guide, { faits: {} });
+    pareil(L.validerEtat({ version: 1, guide: guide }).etat.guide, { faits: {} });
+    faits.g02 = "2026-11-11";
+    pareil(L.validerEtat({ version: 1, guide: { faits: faits } }).etat.guide, { faits: { g02: "2026-11-11" } });
+    pareil(L.validerEtat({ version: 1, favoris: [favori] }).etat.favoris, []);
+    /* Avec un texte bien à lui, le favori est gardé, mais sans la catégorie ni la date héritées. */
+    favori = Object.create({ categorieCle: "lieu", ajouteLe: "2026-11-16T09:30:00.000Z" });
+    favori.texte = "Texte propre";
+    pareil(L.validerEtat({ version: 1, favoris: [favori] }).etat.favoris, [{ texte: "Texte propre", categorieCle: "", ajouteLe: "" }]);
+  });
+
+  test("favoris : un horodatage de plus de 40 caractères est écarté, même lisible", function () {
+    /* Selon le moteur, ces dates rallongées sont lisibles ou non : dans les deux cas, rien n’est gardé. */
+    var base = "Mon, 16 Nov 2026 09:30:00 GMT";
+    var longs = [base + new Array(41).join(" "), new Array(41).join(" ") + base, base + " (" + new Array(41).join("a") + ")"];
+    var i;
+    egal(L.ajouterFavori(L.etatInitial(), "Idée", base).favoris[0].ajouteLe, base, "date courte et lisible : gardée");
+    for (i = 0; i < longs.length; i++) {
+      verifier(longs[i].length > 40, "horodatage n° " + i + " trop court pour l’essai");
+      egal(L.ajouterFavori(L.etatInitial(), "Idée", longs[i]).favoris[0].ajouteLe, "", "ajouterFavori, horodatage n° " + i);
+      egal(L.validerEtat({ version: 1, favoris: [{ texte: "Idée", ajouteLe: longs[i] }] }).etat.favoris[0].ajouteLe, "",
+        "validerEtat, horodatage n° " + i);
+    }
+  });
+
+  test("validerEtat ne modifie pas les favoris ni le guide reçus, et ne partage rien avec eux", function () {
+    var source = {
+      version: 1,
+      favoris: [{ texte: "  Une idée  ", categorieCle: "lieu", ajouteLe: "2026-11-16T09:30:00.000Z", extra: 1 }, null, { texte: "" }],
+      guide: { faits: { g02: "2026-11-11", g01: "2026-11-10", mauvais: "x" }, extra: 1 }
+    };
+    var avant = stable(source);
+    var r = L.validerEtat(source);
+    r.etat.favoris[0].texte = "changé";
+    r.etat.favoris.push({ texte: "ajouté" });
+    r.etat.guide.faits.g05 = "2026-11-12";
+    delete r.etat.guide.faits.g01;
+    egal(stable(source), avant);
+  });
+
+  test("un jour peut être marqué avec un dessin venu des idées ou du guide", function () {
+    var etat = L.marquerFait(L.etatInitial(), "2026-11-16",
+      { exerciceId: "idee", titre: "Un robot qui fait la sieste dans une gare", themeNom: "Idées", duree: 20, faitLe: "2026-11-16T18:00:00.000Z" });
+    etat = L.marquerFait(etat, "2026-11-17",
+      { exerciceId: "guide-g03", titre: "Chapitre 3 : l’exercice des boîtes", themeNom: "Apprendre", duree: 15, faitLe: "2026-11-17T18:00:00.000Z" });
+    pareil(etat.jours["2026-11-16"], { exerciceId: "idee", titre: "Un robot qui fait la sieste dans une gare", themeNom: "Idées",
+      duree: 20, ressenti: null, faitLe: "2026-11-16T18:00:00.000Z" });
+    pareil(etat.jours["2026-11-17"], { exerciceId: "guide-g03", titre: "Chapitre 3 : l’exercice des boîtes", themeNom: "Apprendre",
+      duree: 15, ressenti: null, faitLe: "2026-11-17T18:00:00.000Z" });
+    egal(L.totalJours(etat.jours), 2);
+    egal(L.calculerSerie(etat.jours, "2026-11-17").serie, 2, "ces jours comptent dans la série");
+    pareil(L.depuisJSON(L.versJSON(etat)).etat, etat, "et survivent à l’aller-retour JSON");
+    egal(L.marquerFait(etat, "2026-11-17", { ressenti: "bien" }).jours["2026-11-17"].exerciceId, "guide-g03");
+  });
+
+  test("exerciceParId renvoie null proprement pour « idee » et « guide-gNN »", function () {
+    var ids = ["idee", "guide-g03", "guide-g01", "guide-g12", "guide", "guide-", "idee-3", "guide-g99"];
+    var i;
+    for (i = 0; i < ids.length; i++) {
+      egal(L.exerciceParId(ids[i]), null, ids[i]);
+    }
+    avecDonnees(undefined, undefined, function () {
+      egal(L.exerciceParId("idee"), null, "sans données");
+      egal(L.exerciceParId("guide-g03"), null, "sans données");
+    });
+  });
+
+  /* ================================================================== */
   groupe("Intégrité des données réelles");
   /* ================================================================== */
 
@@ -2229,6 +4273,629 @@
     egal(L.exerciceGenere(0, -1), null, "index négatif");
     egal(L.exerciceGenere(0.5, 0), null, "index non entier");
   });
+
+  /* ================================================================== */
+  /* Aides pour l’intégrité des idées et du guide                        */
+  /* ================================================================== */
+
+  function estTexteReel(v) {
+    return typeof v === "string" && v.replace(/\s/g, "") !== "";
+  }
+
+  function estListe(v) {
+    return Object.prototype.toString.call(v) === "[object Array]";
+  }
+
+  var APOSTROPHE_DROITE = String.fromCharCode(39);
+  var GUILLEMET_DROIT = String.fromCharCode(34);
+
+  /* Vérifie la typographie d’un texte affiché : ’ et « », jamais ' ni ". */
+  function verifierTypographie(texte, ou) {
+    verifier(typeof texte === "string", ou + " : ce n’est pas un texte");
+    verifier(texte.indexOf(APOSTROPHE_DROITE) === -1, ou + " : apostrophe droite dans « " + texte.slice(0, 60) + " »");
+    verifier(texte.indexOf(GUILLEMET_DROIT) === -1, ou + " : guillemet droit dans « " + texte.slice(0, 60) + " »");
+    egal(texte, texte.replace(/^\s+|\s+$/g, ""), ou + " : espaces en trop autour du texte");
+  }
+
+  var CLES_CATEGORIES = ["personnage", "creature", "lieu", "objet", "scene", "defi"];
+
+  function ideesReelles() {
+    var idees = DDJ.idees;
+    if (!idees || typeof idees !== "object" || !estListe(idees.categories)) {
+      throw new Error("DDJ.idees.categories est absent (donnees/idees.js manquant ou illisible ?)");
+    }
+    return idees;
+  }
+
+  function categorieReelle(cle) {
+    var liste = ideesReelles().categories;
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      if (liste[i] && liste[i].cle === cle) {
+        if (!estListe(liste[i].morceaux) || liste[i].morceaux.length === 0) {
+          throw new Error("la catégorie « " + cle + " » n’a pas de morceaux");
+        }
+        return liste[i];
+      }
+    }
+    throw new Error("la catégorie « " + cle + " » est absente de DDJ.idees");
+  }
+
+  var IDS_CHAPITRES = ["g01", "g02", "g03", "g04", "g05", "g06", "g07", "g08", "g09", "g10", "g11", "g12"];
+  var TITRES_PARTIES = ["Voir en volumes", "Remplir sa bibliothèque visuelle", "Inventer"];
+  /* Champs attendus (en plus de « type ») pour chaque type de bloc. */
+  var CHAMPS_BLOCS = {
+    texte: ["contenu"], titre: ["contenu"], astuce: ["contenu"], piege: ["contenu"],
+    liste: ["elements"], etapes: ["elements"], retenir: ["elements"],
+    exercice: ["titre", "consigne", "etapes", "materiel", "duree"],
+    schema: ["legende", "alt", "largeur", "hauteur", "formes"]
+  };
+
+  function guideReel() {
+    var guide = DDJ.guide;
+    if (!guide || typeof guide !== "object" || !estListe(guide.chapitres)) {
+      throw new Error("DDJ.guide.chapitres est absent (donnees/guide-1.js, guide-2.js et guide-3.js manquants ?)");
+    }
+    return guide;
+  }
+
+  function chapitreReel(id) {
+    var liste = guideReel().chapitres;
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      if (liste[i] && liste[i].id === id) {
+        if (!estListe(liste[i].blocs)) {
+          throw new Error("le chapitre " + id + " n’a pas de blocs");
+        }
+        return liste[i];
+      }
+    }
+    throw new Error("le chapitre " + id + " est absent de DDJ.guide (fichier donnees/guide-*.js manquant ou incomplet ?)");
+  }
+
+  function blocsDeType(chapitre, type) {
+    var r = [];
+    var i;
+    for (i = 0; i < chapitre.blocs.length; i++) {
+      if (chapitre.blocs[i] && chapitre.blocs[i].type === type) {
+        r.push(chapitre.blocs[i]);
+      }
+    }
+    return r;
+  }
+
+  /* Schémas d’un chapitre dont la structure est saine (les autres sont signalés par un test à part). */
+  function schemasSains(chapitre) {
+    var tous = blocsDeType(chapitre, "schema");
+    var r = [];
+    var i;
+    if (tous.length === 0) {
+      throw new Error("aucun schéma dans le chapitre " + chapitre.id);
+    }
+    for (i = 0; i < tous.length; i++) {
+      if (L.validerSchema(tous[i]).ok) {
+        r.push({ numero: i + 1, bloc: tous[i] });
+      }
+    }
+    return r;
+  }
+
+  /* Rectangle occupé par une étiquette non tournée, d’après une largeur moyenne par caractère. */
+  function boiteEtiquette(forme, parCaractere) {
+    var a = forme[1];
+    var largeur = forme[2].length * parCaractere;
+    var gauche = a.ancre === "middle" ? a.x - largeur / 2 : (a.ancre === "end" ? a.x - largeur : a.x);
+    return { gauche: gauche, droite: gauche + largeur, haut: a.y - 9, bas: a.y + 2 };
+  }
+
+  /* Tous les textes affichés d’un chapitre, avec leur emplacement. */
+  function textesAffiches(chapitre) {
+    var r = [];
+    var i, k, b, ou;
+    function ajouter(texte, lieu) {
+      r.push({ texte: texte, ou: lieu });
+    }
+    function ajouterListe(liste, lieu) {
+      var n;
+      if (estListe(liste)) {
+        for (n = 0; n < liste.length; n++) {
+          ajouter(liste[n], lieu + " (élément " + (n + 1) + ")");
+        }
+      }
+    }
+    ajouter(chapitre.titre, "titre du chapitre");
+    ajouter(chapitre.resume, "résumé du chapitre");
+    for (i = 0; i < chapitre.blocs.length; i++) {
+      b = chapitre.blocs[i];
+      if (!b || typeof b !== "object") {
+        continue;
+      }
+      ou = "bloc " + (i + 1) + " (" + b.type + ")";
+      if (b.type === "liste" || b.type === "etapes" || b.type === "retenir") {
+        ajouterListe(b.elements, ou);
+      } else if (b.type === "exercice") {
+        ajouter(b.titre, ou + ", titre");
+        ajouter(b.consigne, ou + ", consigne");
+        ajouter(b.materiel, ou + ", matériel");
+        ajouterListe(b.etapes, ou + ", étapes");
+      } else if (b.type === "schema") {
+        ajouter(b.legende, ou + ", légende");
+        ajouter(b.alt, ou + ", alt");
+        if (estListe(b.formes)) {
+          for (k = 0; k < b.formes.length; k++) {
+            if (estListe(b.formes[k]) && b.formes[k][0] === "text") {
+              ajouter(b.formes[k][2], ou + ", étiquette de la forme " + (k + 1));
+            }
+          }
+        }
+      } else {
+        ajouter(b.contenu, ou);
+      }
+    }
+    return r;
+  }
+
+  /* ================================================================== */
+  groupe("Intégrité des données réelles : idées");
+  /* ================================================================== */
+
+  test("DDJ.idees contient les six catégories prévues, dans l’ordre", function () {
+    var liste = ideesReelles().categories;
+    var cles = [];
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      cles.push(liste[i] ? liste[i].cle : undefined);
+    }
+    pareil(cles, CLES_CATEGORIES);
+    pareil(Object.keys(ideesReelles()), ["categories"], "DDJ.idees ne contient que « categories »");
+  });
+
+  test("categoriesIdees rend les six catégories, avec nom et description", function () {
+    var c = L.categoriesIdees();
+    var noms = {};
+    var i;
+    ideesReelles();
+    egal(c.length, 6, "nombre de catégories utilisables");
+    for (i = 0; i < c.length; i++) {
+      egal(c[i].cle, CLES_CATEGORIES[i]);
+      verifier(estTexteReel(c[i].nom), c[i].cle + " : nom manquant");
+      verifier(estTexteReel(c[i].description), c[i].cle + " : description manquante");
+      verifier(noms["n:" + c[i].nom] !== true, "nom de catégorie en double : " + c[i].nom);
+      noms["n:" + c[i].nom] = true;
+      pareil(Object.keys(c[i]).sort(), ["cle", "description", "nom"]);
+    }
+  });
+
+  (function () {
+    var i;
+    function testsCategorie(cle) {
+      var nomTest = "catégorie « " + cle + " »";
+
+      test(nomTest + " : clé, nom, description, gabarit et morceaux présents, rien d’autre", function () {
+        var c = categorieReelle(cle);
+        var m, k;
+        pareil(Object.keys(c).sort(), ["cle", "description", "gabarit", "morceaux", "nom"]);
+        verifier(estTexteReel(c.nom), "nom manquant");
+        verifier(estTexteReel(c.description), "description manquante");
+        verifier(/[.!?…]$/.test(c.description), "la description devrait être une phrase terminée par un point : « " + c.description + " »");
+        verifier(estTexteReel(c.gabarit), "gabarit manquant");
+        verifierTypographie(c.nom, "nom");
+        verifierTypographie(c.description, "description");
+        verifierTypographie(c.gabarit, "gabarit");
+        verifier(c.morceaux.length >= 1, "aucun morceau");
+        for (k = 0; k < c.morceaux.length; k++) {
+          m = c.morceaux[k];
+          verifier(m && typeof m === "object", "le morceau n° " + (k + 1) + " n’est pas un objet");
+          pareil(Object.keys(m).sort(), ["cle", "mots", "nom"], "champs du morceau n° " + (k + 1));
+          verifier(typeof m.cle === "string" && /^[A-Za-z][A-Za-z0-9_]*$/.test(m.cle), "clé de morceau inattendue : " + stable(m.cle));
+          verifier(estTexteReel(m.nom), "morceau « " + m.cle + " » : nom manquant");
+          verifierTypographie(m.nom, "nom du morceau « " + m.cle + " »");
+        }
+      });
+
+      test(nomTest + " : le gabarit contient exactement une fois chaque {cle}, et rien d’autre entre accolades", function () {
+        var c = categorieReelle(cle);
+        var trouvees = c.gabarit.match(/\{[^{}]*\}/g) || [];
+        var attendues = [];
+        var vues = {};
+        var k;
+        for (k = 0; k < c.morceaux.length; k++) {
+          verifier(vues["c:" + c.morceaux[k].cle] !== true, "clé de morceau en double : " + c.morceaux[k].cle);
+          vues["c:" + c.morceaux[k].cle] = true;
+          attendues.push("{" + c.morceaux[k].cle + "}");
+        }
+        pareil(trouvees.slice().sort(), attendues.slice().sort(), "accolades du gabarit « " + c.gabarit + " »");
+        egal(c.gabarit.replace(/\{[^{}]*\}/g, "").replace(/[{}]/g, ""), c.gabarit.replace(/\{[^{}]*\}/g, ""),
+          "accolade isolée dans le gabarit « " + c.gabarit + " »");
+      });
+
+      test(nomTest + " : au moins 30 mots par morceau, aucun vide, aucun doublon", function () {
+        var c = categorieReelle(cle);
+        var k, n, m, mot, vus;
+        for (k = 0; k < c.morceaux.length; k++) {
+          m = c.morceaux[k];
+          verifier(estListe(m.mots), "morceau « " + m.cle + " » : mots n’est pas un tableau");
+          verifier(m.mots.length >= 30, "morceau « " + m.cle + " » : seulement " + m.mots.length + " mots");
+          vus = {};
+          for (n = 0; n < m.mots.length; n++) {
+            mot = m.mots[n];
+            verifier(estTexteReel(mot), "morceau « " + m.cle + " » : mot n° " + (n + 1) + " vide");
+            verifierTypographie(mot, "morceau « " + m.cle + " », mot n° " + (n + 1));
+            verifier(mot.indexOf("{") === -1 && mot.indexOf("}") === -1, "accolade dans le mot « " + mot + " »");
+            verifier(mot.indexOf("  ") === -1, "double espace dans le mot « " + mot + " »");
+            verifier(vus["m:" + mot.toLowerCase()] !== true, "morceau « " + m.cle + " » : mot en double : " + mot);
+            vus["m:" + mot.toLowerCase()] = true;
+          }
+        }
+      });
+
+      test(nomTest + " : chaque mot donne une idée bien formée, assez courte pour les favoris", function () {
+        var c = categorieReelle(cle);
+        var plusLongue = c.gabarit.length;
+        var k, n, index, idee, j, max;
+        for (k = 0; k < c.morceaux.length; k++) {
+          max = 0;
+          for (n = 0; n < c.morceaux[k].mots.length; n++) {
+            max = Math.max(max, String(c.morceaux[k].mots[n]).length);
+            /* Ce mot, combiné avec un mot des autres morceaux qui change à chaque fois. */
+            index = [];
+            for (j = 0; j < c.morceaux.length; j++) {
+              index.push(j === k ? n : (n * 7 + j * 3) % c.morceaux[j].mots.length);
+            }
+            idee = L.ideeDepuisIndex(cle, index);
+            verifier(idee !== null, "ideeDepuisIndex a renvoyé null pour " + stable(index));
+            egal(idee.categorieCle, cle);
+            egal(idee.morceaux[k].texte, c.morceaux[k].mots[n]);
+            verifier(idee.texte.toLowerCase().indexOf(String(c.morceaux[k].mots[n]).toLowerCase()) !== -1,
+              "le mot « " + c.morceaux[k].mots[n] + " » manque dans « " + idee.texte + " »");
+            verifier(!/[{}]/.test(idee.texte), "accolade restante : " + idee.texte);
+            verifier(idee.texte.indexOf("  ") === -1, "double espace : " + idee.texte);
+            egal(idee.texte.charAt(0), idee.texte.charAt(0).toUpperCase(), "majuscule initiale de « " + idee.texte + " »");
+          }
+          plusLongue += max;
+        }
+        verifier(plusLongue <= 300, "l’idée la plus longue ferait " + plusLongue + " caractères : elle serait coupée dans les favoris (300 max)");
+      });
+    }
+    for (i = 0; i < CLES_CATEGORIES.length; i++) {
+      testsCategorie(CLES_CATEGORIES[i]);
+    }
+  })();
+
+  test("genererIdee fonctionne sur les données réelles : chaque catégorie, puis « surprise »", function () {
+    var alea = L.mulberry32(20261116);
+    var sorties = {};
+    var nombre = 0;
+    var i, k, idee, precedent, index, m;
+    ideesReelles();
+    for (k = 0; k < CLES_CATEGORIES.length; k++) {
+      precedent = "";
+      for (i = 0; i < 100; i++) {
+        idee = L.genererIdee(CLES_CATEGORIES[k], { alea: alea, eviter: precedent });
+        verifier(idee !== null, "null pour « " + CLES_CATEGORIES[k] + " »");
+        egal(idee.categorieCle, CLES_CATEGORIES[k]);
+        verifier(idee.texte !== precedent, "deux fois de suite : " + idee.texte);
+        precedent = idee.texte;
+        index = {};
+        for (m = 0; m < idee.morceaux.length; m++) {
+          index[idee.morceaux[m].cle] = idee.morceaux[m].index;
+        }
+        pareil(L.ideeDepuisIndex(idee.categorieCle, index), idee, "aller-retour par les index");
+      }
+    }
+    for (i = 0; i < 300; i++) {
+      idee = L.genererIdee("surprise", { alea: alea });
+      verifier(idee !== null, "null en mode surprise");
+      if (sorties[idee.categorieCle] !== true) {
+        sorties[idee.categorieCle] = true;
+        nombre++;
+      }
+    }
+    egal(nombre, 6, "les six catégories devraient sortir en mode surprise");
+  });
+
+  test("données réelles : un verrou garde son mot, y compris pour une clé partagée par deux catégories", function () {
+    var alea = L.mulberry32(5);
+    var k, i, c, verrous, idee;
+    for (k = 0; k < CLES_CATEGORIES.length; k++) {
+      c = categorieReelle(CLES_CATEGORIES[k]);
+      verrous = {};
+      verrous[c.morceaux[0].cle] = 7;
+      for (i = 0; i < 20; i++) {
+        idee = L.genererIdee(c.cle, { alea: alea, verrous: verrous });
+        egal(idee.categorieCle, c.cle);
+        egal(idee.morceaux[0].index, 7);
+        egal(idee.morceaux[0].texte, c.morceaux[0].mots[7]);
+      }
+    }
+  });
+
+  /* ================================================================== */
+  groupe("Intégrité des données réelles : guide");
+  /* ================================================================== */
+
+  test("DDJ.guide contient les 3 parties prévues", function () {
+    var parties = guideReel().parties;
+    var i;
+    verifier(estListe(parties), "DDJ.guide.parties est absent (il est défini par donnees/guide-1.js)");
+    egal(parties.length, 3, "nombre de parties");
+    for (i = 0; i < 3; i++) {
+      pareil(parties[i], { numero: i + 1, titre: TITRES_PARTIES[i] }, "partie n° " + (i + 1));
+    }
+    pareil(L.partiesGuide(), parties);
+    pareil(Object.keys(guideReel()).sort(), ["chapitres", "parties"], "DDJ.guide ne contient que « parties » et « chapitres »");
+  });
+
+  test("le guide contient exactement les 12 chapitres g01 à g12, sans doublon", function () {
+    var liste = guideReel().chapitres;
+    var ids = [];
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      ids.push(liste[i] ? liste[i].id : undefined);
+    }
+    pareil(ids.slice().sort(), IDS_CHAPITRES);
+  });
+
+  test("chapitresGuide rend les 12 chapitres dans l’ordre, numérotés de 1 à 12", function () {
+    var c;
+    var i;
+    guideReel();
+    c = L.chapitresGuide();
+    pareil(idsDe(c), IDS_CHAPITRES);
+    for (i = 0; i < c.length; i++) {
+      egal(c[i].numero, i + 1, c[i].id);
+      pareil(L.chapitreParId(c[i].id), c[i]);
+    }
+  });
+
+  test("les parties se suivent : chacune a des chapitres, et on ne revient jamais en arrière", function () {
+    var c;
+    var compte = { 1: 0, 2: 0, 3: 0 };
+    var precedente = 1;
+    var i;
+    guideReel();
+    c = L.chapitresGuide();
+    verifier(c.length > 0, "aucun chapitre");
+    for (i = 0; i < c.length; i++) {
+      verifier(c[i].partie === 1 || c[i].partie === 2 || c[i].partie === 3, c[i].id + " : partie " + stable(c[i].partie));
+      verifier(c[i].partie >= precedente, c[i].id + " : partie " + c[i].partie + " après la partie " + precedente);
+      precedente = c[i].partie;
+      compte[c[i].partie]++;
+    }
+    egal(c[0].partie, 1, "le premier chapitre ouvre la partie 1");
+    verifier(compte[1] >= 1 && compte[2] >= 1 && compte[3] >= 1, "une partie n’a aucun chapitre : " + stable(compte));
+    egal(c.length, 12, "nombre de chapitres");
+  });
+
+  test("on parcourt tout le guide avec chapitreVoisin et prochainChapitre", function () {
+    var etat = L.etatInitial();
+    var id = "g01";
+    var vus = [];
+    var garde = 0;
+    var suivant, prochain;
+    guideReel();
+    while (id !== null && garde < 20) {
+      garde++;
+      vus.push(id);
+      prochain = L.prochainChapitre(etat);
+      verifier(prochain !== null && prochain.id === id, "prochainChapitre devrait rendre " + id);
+      etat = L.marquerChapitre(etat, id, "2026-11-16");
+      suivant = L.chapitreVoisin(id, 1);
+      if (suivant !== null) {
+        egal(L.chapitreVoisin(suivant.id, -1).id, id, "retour en arrière depuis " + suivant.id);
+      }
+      id = suivant === null ? null : suivant.id;
+    }
+    pareil(vus, IDS_CHAPITRES);
+    egal(L.prochainChapitre(etat), null, "tout est fait");
+    egal(L.nombreChapitresFaits(etat), 12);
+    egal(L.chapitreVoisin("g01", -1), null);
+    egal(L.chapitreVoisin("g12", 1), null);
+  });
+
+  test("les titres des chapitres sont tous différents", function () {
+    var liste = guideReel().chapitres;
+    var vus = {};
+    var i, titre;
+    for (i = 0; i < liste.length; i++) {
+      titre = String(liste[i].titre).toLowerCase();
+      verifier(vus["t:" + titre] !== true, "titre en double : " + liste[i].titre);
+      vus["t:" + titre] = true;
+    }
+  });
+
+  (function () {
+    var i;
+    function testsChapitre(id) {
+      var nomTest = "chapitre " + id;
+
+      test(nomTest + " : id, numéro, partie, titre et résumé cohérents, rien d’autre", function () {
+        var c = chapitreReel(id);
+        pareil(Object.keys(c).sort(), ["blocs", "id", "numero", "partie", "resume", "titre"]);
+        egal(c.numero, parseInt(id.slice(1), 10), "numéro");
+        verifier(c.partie === 1 || c.partie === 2 || c.partie === 3, "partie " + stable(c.partie));
+        verifier(estTexteReel(c.titre), "titre manquant");
+        verifier(estTexteReel(c.resume), "résumé manquant");
+        verifier(/[.!?…]$/.test(c.resume), "le résumé devrait être une phrase terminée par un point : « " + c.resume + " »");
+        verifier(c.blocs.length >= 6, "seulement " + c.blocs.length + " blocs (au moins des explications, 3 schémas, un exercice et les points à retenir)");
+      });
+
+      test(nomTest + " : blocs de types permis, chacun avec ses champs et rien d’autre", function () {
+        var c = chapitreReel(id);
+        var k, n, b, champs, ou;
+        for (k = 0; k < c.blocs.length; k++) {
+          b = c.blocs[k];
+          ou = "bloc " + (k + 1);
+          verifier(b && typeof b === "object" && !estListe(b), ou + " : ce n’est pas un objet");
+          verifier(typeof b.type === "string" && Object.prototype.hasOwnProperty.call(CHAMPS_BLOCS, b.type),
+            ou + " : type non permis " + stable(b.type));
+          ou += " (" + b.type + ")";
+          champs = CHAMPS_BLOCS[b.type].concat(["type"]).sort();
+          pareil(Object.keys(b).sort(), champs, ou + " : champs");
+          if (b.type === "texte" || b.type === "titre" || b.type === "astuce" || b.type === "piege") {
+            verifier(estTexteReel(b.contenu), ou + " : contenu vide");
+          }
+          if (b.type === "liste" || b.type === "etapes" || b.type === "retenir") {
+            verifier(estListe(b.elements) && b.elements.length >= 1, ou + " : au moins un élément attendu");
+            for (n = 0; n < b.elements.length; n++) {
+              verifier(estTexteReel(b.elements[n]), ou + " : élément " + (n + 1) + " vide");
+            }
+          }
+        }
+        verifier(blocsDeType(c, "texte").length >= 1, "aucun paragraphe d’explication");
+      });
+
+      test(nomTest + " : exactement un exercice, après les explications, 3 étapes « N min : » dont la somme égale la durée", function () {
+        var c = chapitreReel(id);
+        var exercices = blocsDeType(c, "exercice");
+        var position = -1;
+        var somme = 0;
+        var e, k, m;
+        egal(exercices.length, 1, "nombre de blocs exercice");
+        e = exercices[0];
+        verifier(estTexteReel(e.titre), "titre de l’exercice manquant");
+        verifier(estTexteReel(e.consigne), "consigne manquante");
+        verifier(estTexteReel(e.materiel), "matériel manquant");
+        verifier(estListe(e.etapes), "etapes n’est pas un tableau");
+        egal(e.etapes.length, 3, "nombre d’étapes");
+        for (k = 0; k < 3; k++) {
+          m = /^(\d+) min : \S/.exec(String(e.etapes[k]));
+          verifier(m !== null, "l’étape " + (k + 1) + " ne commence pas par « N min : » (« " + String(e.etapes[k]).slice(0, 30) + " »)");
+          verifier(parseInt(m[1], 10) >= 1, "étape " + (k + 1) + " de 0 minute");
+          somme += parseInt(m[1], 10);
+        }
+        verifier(e.duree === 10 || e.duree === 15 || e.duree === 20 || e.duree === 30, "durée " + stable(e.duree) + " (10, 15, 20 ou 30 attendu)");
+        egal(somme, e.duree, "somme des temps des étapes");
+        for (k = 0; k < c.blocs.length; k++) {
+          if (c.blocs[k] === e) {
+            position = k;
+          }
+        }
+        verifier(position >= 1, "l’exercice ouvre le chapitre : il doit venir après les explications");
+        for (k = position + 1; k < c.blocs.length; k++) {
+          verifier(c.blocs[k].type === "retenir" || c.blocs[k].type === "astuce" || c.blocs[k].type === "piege",
+            "un bloc « " + c.blocs[k].type + " » suit l’exercice : les explications doivent venir avant");
+        }
+      });
+
+      test(nomTest + " : un seul bloc « retenir », en dernier", function () {
+        var c = chapitreReel(id);
+        var retenir = blocsDeType(c, "retenir");
+        egal(retenir.length, 1, "nombre de blocs retenir");
+        egal(c.blocs[c.blocs.length - 1].type, "retenir", "type du dernier bloc");
+        verifier(estListe(retenir[0].elements) && retenir[0].elements.length >= 2,
+          "au moins 2 points à retenir attendus");
+      });
+
+      test(nomTest + " : 3 ou 4 schémas, tous acceptés par validerSchema", function () {
+        var c = chapitreReel(id);
+        var schemas = blocsDeType(c, "schema");
+        var k, r;
+        verifier(schemas.length === 3 || schemas.length === 4, schemas.length + " schémas (3 ou 4 attendus)");
+        for (k = 0; k < schemas.length; k++) {
+          r = L.validerSchema(schemas[k]);
+          verifier(r.ok === true, "schéma " + (k + 1) + " (« " + String(schemas[k].legende).slice(0, 40) + " ») refusé : " + r.erreur);
+        }
+      });
+
+      test(nomTest + " : schémas, étiquettes de 25 caractères au plus", function () {
+        var c = chapitreReel(id);
+        var schemas = blocsDeType(c, "schema");
+        var k, n, f;
+        verifier(schemas.length > 0, "aucun schéma");
+        for (k = 0; k < schemas.length; k++) {
+          verifier(estListe(schemas[k].formes), "schéma " + (k + 1) + " : formes absentes");
+          for (n = 0; n < schemas[k].formes.length; n++) {
+            f = schemas[k].formes[n];
+            if (estListe(f) && f[0] === "text") {
+              verifier(typeof f[2] === "string" && f[2].length <= 25,
+                "schéma " + (k + 1) + ", forme " + (n + 1) + " : étiquette de " + String(f[2]).length + " caractères (« " + f[2] + " »)");
+              egal(f[2], String(f[2]).replace(/^\s+|\s+$/g, ""), "schéma " + (k + 1) + ", forme " + (n + 1) + " : espaces autour de l’étiquette");
+            }
+          }
+        }
+      });
+
+      test(nomTest + " : schémas, tout tient dans le cadre avec une marge de 6", function () {
+        var c = chapitreReel(id);
+        var schemas = schemasSains(c);
+        var soucis = [];
+        var k, n, r;
+        for (k = 0; k < schemas.length; k++) {
+          for (n = 0; n < schemas[k].bloc.formes.length; n++) {
+            r = L.validerForme(schemas[k].bloc.formes[n], 320, schemas[k].bloc.hauteur, L.SCHEMA_MARGE);
+            if (!r.ok) {
+              soucis.push("schéma " + schemas[k].numero + ", forme " + (n + 1) + " : " + r.erreur);
+            }
+          }
+        }
+        verifier(soucis.length === 0, soucis.length + " forme(s) trop près du bord. " + soucis.slice(0, 6).join(" | "));
+      });
+
+      test(nomTest + " : schémas, étiquettes entières dans le cadre (estimation : 6 de large par caractère)", function () {
+        var c = chapitreReel(id);
+        var schemas = schemasSains(c);
+        var soucis = [];
+        var k, n, f, b;
+        for (k = 0; k < schemas.length; k++) {
+          for (n = 0; n < schemas[k].bloc.formes.length; n++) {
+            f = schemas[k].bloc.formes[n];
+            if (f[0] === "text" && f[1].transform === undefined) {
+              b = boiteEtiquette(f, 6);
+              if (b.gauche < 0 || b.droite > 320 || b.haut < 0 || b.bas > schemas[k].bloc.hauteur) {
+                soucis.push("schéma " + schemas[k].numero + ", forme " + (n + 1) + " : « " + f[2] + " » irait de x = " +
+                  Math.round(b.gauche) + " à " + Math.round(b.droite) + ", de y = " + Math.round(b.haut) + " à " + Math.round(b.bas));
+              }
+            }
+          }
+        }
+        verifier(soucis.length === 0, soucis.length + " étiquette(s) coupée(s) par le bord. " + soucis.slice(0, 6).join(" | "));
+      });
+
+      test(nomTest + " : schémas, étiquettes qui ne se chevauchent pas (estimation : 5,5 de large par caractère)", function () {
+        var c = chapitreReel(id);
+        var schemas = schemasSains(c);
+        var soucis = [];
+        var k, n, p, f, boites, a, b;
+        for (k = 0; k < schemas.length; k++) {
+          boites = [];
+          for (n = 0; n < schemas[k].bloc.formes.length; n++) {
+            f = schemas[k].bloc.formes[n];
+            if (f[0] === "text" && f[1].transform === undefined) {
+              b = boiteEtiquette(f, 5.5);
+              b.texte = f[2];
+              boites.push(b);
+            }
+          }
+          for (n = 0; n < boites.length; n++) {
+            for (p = n + 1; p < boites.length; p++) {
+              a = boites[n];
+              b = boites[p];
+              /* Chevauchement net : plus de 3 en largeur et plus de 3 en hauteur. */
+              if (Math.min(a.droite, b.droite) - Math.max(a.gauche, b.gauche) > 3 &&
+                  Math.min(a.bas, b.bas) - Math.max(a.haut, b.haut) > 3) {
+                soucis.push("schéma " + schemas[k].numero + " : « " + a.texte + " » et « " + b.texte + " »");
+              }
+            }
+          }
+        }
+        verifier(soucis.length === 0, soucis.length + " paire(s) d’étiquettes superposées. " + soucis.slice(0, 6).join(" | "));
+      });
+
+      test(nomTest + " : textes en bon français typographique (’ et « », jamais d’apostrophe ni de guillemet droits)", function () {
+        var c = chapitreReel(id);
+        var textes = textesAffiches(c);
+        var k;
+        verifier(textes.length > 10, "trop peu de textes trouvés : " + textes.length);
+        for (k = 0; k < textes.length; k++) {
+          verifierTypographie(textes[k].texte, textes[k].ou);
+        }
+      });
+    }
+    for (i = 0; i < IDS_CHAPITRES.length; i++) {
+      testsChapitre(IDS_CHAPITRES[i]);
+    }
+  })();
 
   /* ================================================================== */
   /* Bilan et affichage                                                  */
