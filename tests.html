@@ -1,0 +1,2310 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tests : en cours…</title>
+<style>
+  :root { --fond: #fbf8f3; --texte: #2b2622; --doux: #6f665e; --trait: #e4dcd0; --ok: #1f7a3d; --echec: #b3261e; --fond-echec: #fdecea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fond: #1d1b19; --texte: #ece6dd; --doux: #a59c92; --trait: #3a3531; --ok: #6fcf8b; --echec: #ff8a80; --fond-echec: #3a1f1d; }
+  }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--fond); color: var(--texte); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  h2 { font-size: 16px; margin: 28px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--trait); }
+  h2 small { font-weight: normal; color: var(--doux); }
+  .bilan { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .bilan.ok { color: var(--ok); }
+  .bilan.echec { color: var(--echec); }
+  .note { color: var(--doux); margin: 0; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+  li.ok { color: var(--ok); }
+  li.echec { color: var(--echec); background: var(--fond-echec); font-weight: 600; }
+  li .message { display: block; font-weight: normal; font-family: Consolas, "Courier New", monospace; font-size: 13px; padding-left: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dessin du jour — tests de la logique</h1>
+  <p id="bilan" class="bilan">Tests en cours…</p>
+  <p class="note">Cette page charge les données réelles et logique.js, puis vérifie leur comportement. Rien n’est enregistré.</p>
+  <div id="resultats"></div>
+</main>
+
+<script src="donnees/exercices-semaine.js"></script>
+<script src="donnees/exercices-weekend.js"></script>
+<script src="logique.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var DDJ = window.DDJ = window.DDJ || {};
+  var L = DDJ.logique || {};
+
+  /* ================================================================== */
+  /* Mini-harnais                                                        */
+  /* ================================================================== */
+
+  var resultats = [];
+  var groupeCourant = "";
+
+  function groupe(nom) {
+    groupeCourant = nom;
+  }
+
+  /* Chaque test est isolé : une exception = un échec, les autres continuent. */
+  function test(nom, fn) {
+    var r = { groupe: groupeCourant, nom: nom, ok: true, message: "" };
+    try {
+      fn();
+    } catch (e) {
+      r.ok = false;
+      r.message = (e && e.message) ? String(e.message) : String(e);
+    }
+    resultats.push(r);
+  }
+
+  function stable(v) {
+    var cles, morceaux, i;
+    if (v === null || typeof v !== "object") {
+      return String(JSON.stringify(v));
+    }
+    morceaux = [];
+    if (Object.prototype.toString.call(v) === "[object Array]") {
+      for (i = 0; i < v.length; i++) {
+        morceaux.push(stable(v[i]));
+      }
+      return "[" + morceaux.join(",") + "]";
+    }
+    cles = Object.keys(v).sort();
+    for (i = 0; i < cles.length; i++) {
+      morceaux.push(JSON.stringify(cles[i]) + ":" + stable(v[cles[i]]));
+    }
+    return "{" + morceaux.join(",") + "}";
+  }
+
+  function verifier(condition, message) {
+    if (!condition) {
+      throw new Error(message || "la condition attendue est fausse");
+    }
+  }
+
+  function egal(obtenu, attendu, message) {
+    if (obtenu !== attendu) {
+      throw new Error((message ? message + " : " : "") + "attendu " + stable(attendu) + ", obtenu " + stable(obtenu));
+    }
+  }
+
+  /* Égalité en profondeur (ordre des propriétés indifférent). */
+  function pareil(obtenu, attendu, message) {
+    var a = stable(obtenu);
+    var b = stable(attendu);
+    if (a !== b) {
+      throw new Error((message ? message + " : " : "") + "attendu " + b + ", obtenu " + a);
+    }
+  }
+
+  function proche(obtenu, attendu, message) {
+    if (typeof obtenu !== "number" || Math.abs(obtenu - attendu) > 1e-12) {
+      throw new Error((message ? message + " : " : "") + "attendu " + attendu + ", obtenu " + obtenu);
+    }
+  }
+
+  /* ================================================================== */
+  /* Aides pour les tests                                                */
+  /* ================================================================== */
+
+  var ATTENDUS = {
+    1: { cle: "lignes", jour: "Lundi", nom: "Lignes et échauffement", prefixe: "lun-" },
+    2: { cle: "objets", jour: "Mardi", nom: "Objets du quotidien", prefixe: "mar-" },
+    3: { cle: "personnages", jour: "Mercredi", nom: "Personnages et gestes", prefixe: "mer-" },
+    4: { cle: "espaces", jour: "Jeudi", nom: "Espaces et perspective", prefixe: "jeu-" },
+    5: { cle: "nature", jour: "Vendredi", nom: "Nature", prefixe: "ven-" },
+    6: { cle: "imagination", jour: "Samedi", nom: "Imagination", prefixe: "sam-" },
+    0: { cle: "libre", jour: "Dimanche", nom: "Libre", prefixe: "dim-" }
+  };
+  var ORDRE_JOURS = [1, 2, 3, 4, 5, 6, 0];
+  var JOURS_BANQUE = [1, 2, 3, 4, 5, 0]; /* tous sauf le samedi */
+
+  /* Clé du jour de semaine « js » (0 = dimanche) dans la semaine d’index donné. */
+  function cleDe(semaine, js) {
+    return L.ajouterJours("2024-01-01", semaine * 7 + ((js + 6) % 7));
+  }
+
+  function exo(cle, tirage) {
+    var e = L.exerciceDuJour(cle, tirage);
+    if (!e) {
+      throw new Error("exerciceDuJour(" + cle + ", " + tirage + ") a renvoyé " + stable(e));
+    }
+    return e;
+  }
+
+  function themeReel(js) {
+    var t = DDJ.themes ? DDJ.themes[js] : null;
+    if (!t || typeof t !== "object") {
+      throw new Error("le thème du jour " + js + " (" + ATTENDUS[js].jour + ") est absent des données");
+    }
+    if (Object.prototype.toString.call(t.exercices) !== "[object Array]" || t.exercices.length === 0) {
+      throw new Error("le thème « " + ATTENDUS[js].jour + " » n’a pas d’exercices");
+    }
+    return t;
+  }
+
+  function generateurReel() {
+    var g = DDJ.generateur;
+    if (!g || !g.sujets || !g.contraintes || !g.sujets.length || !g.contraintes.length) {
+      throw new Error("DDJ.generateur est absent ou vide");
+    }
+    return g;
+  }
+
+  /* Remplace temporairement les données, le temps d’une fonction. */
+  function avecDonnees(themes, generateur, fn) {
+    var themesAvant = DDJ.themes;
+    var generateurAvant = DDJ.generateur;
+    DDJ.themes = themes;
+    DDJ.generateur = generateur;
+    try {
+      return fn();
+    } finally {
+      DDJ.themes = themesAvant;
+      DDJ.generateur = generateurAvant;
+    }
+  }
+
+  function exerciceFactice(prefixe, i) {
+    return {
+      id: prefixe + (i < 9 ? "0" : "") + (i + 1),
+      titre: "Exercice " + (i + 1),
+      consigne: "Dessine quelque chose de simple.",
+      etapes: ["5 min : observe.", "5 min : esquisse.", "5 min : précise."],
+      materiel: "Crayon et papier",
+      siBloque: "Fais plus simple.",
+      duree: 15
+    };
+  }
+
+  function themesFactices(n) {
+    var themes = {};
+    var js, i, liste;
+    for (js = 0; js < 7; js++) {
+      liste = [];
+      for (i = 0; i < n; i++) {
+        liste.push(exerciceFactice(ATTENDUS[js].prefixe, i));
+      }
+      themes[js] = {
+        cle: ATTENDUS[js].cle,
+        jour: ATTENDUS[js].jour,
+        nom: ATTENDUS[js].nom,
+        description: "Thème factice.",
+        exercices: liste
+      };
+    }
+    return themes;
+  }
+
+  function generateurFactice() {
+    return {
+      sujets: ["un phare", "une théière", "un chat", "un vélo"],
+      contraintes: ["en pleine tempête", "sous la mer", "la nuit", "vu de très loin"]
+    };
+  }
+
+  /* Objet « jours » à partir d’une liste de clés. */
+  function jours(liste) {
+    var o = {};
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      o[liste[i]] = {
+        exerciceId: "lun-01", titre: "Test", themeNom: "Lignes et échauffement",
+        duree: 20, ressenti: null, faitLe: liste[i] + "T10:00:00.000Z"
+      };
+    }
+    return o;
+  }
+
+  /* Toutes les clés de debut à fin incluses. */
+  function plage(debut, fin) {
+    var liste = [];
+    var c = debut;
+    var garde = 0;
+    while (c !== null && c <= fin && garde < 5000) {
+      liste.push(c);
+      c = L.ajouterJours(c, 1);
+      garde++;
+    }
+    return liste;
+  }
+
+  function sans(liste, exclus) {
+    var r = [];
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      if (exclus.indexOf(liste[i]) === -1) {
+        r.push(liste[i]);
+      }
+    }
+    return r;
+  }
+
+  function seuils(paliers) {
+    var r = [];
+    var i;
+    for (i = 0; i < paliers.length; i++) {
+      r.push(paliers[i].seuil);
+    }
+    return r;
+  }
+
+  function serie(listeFaits, aujourdHui) {
+    return L.calculerSerie(jours(listeFaits), aujourdHui);
+  }
+
+  function historique(listeFaits, aujourdHui) {
+    return L.jokersHistorique(jours(listeFaits), aujourdHui);
+  }
+
+  /* ================================================================== */
+  groupe("Dates");
+  /* ================================================================== */
+
+  test("cleDate utilise la date locale, même tard le soir", function () {
+    egal(L.cleDate(new Date(2026, 0, 5, 23, 59, 59)), "2026-01-05");
+  });
+
+  test("cleDate juste après minuit donne bien le nouveau jour", function () {
+    egal(L.cleDate(new Date(2026, 2, 1, 0, 0, 1)), "2026-03-01");
+  });
+
+  test("cleDate complète les mois et jours sur 2 chiffres", function () {
+    egal(L.cleDate(new Date(2026, 8, 9, 12, 0, 0)), "2026-09-09");
+  });
+
+  test("cleDate renvoie null pour une date invalide", function () {
+    egal(L.cleDate(new Date(NaN)), null);
+    egal(L.cleDate("2026-01-05"), null);
+    egal(L.cleDate(null), null);
+  });
+
+  test("aujourdHui renvoie la clé valide du jour courant", function () {
+    var avant = L.cleDate(new Date());
+    var cle = L.aujourdHui();
+    var apres = L.cleDate(new Date());
+    verifier(L.estCleValide(cle), "clé invalide : " + cle);
+    verifier(cle === avant || cle === apres, "clé inattendue : " + cle);
+  });
+
+  test("dateDepuisCle donne un objet Date local à midi", function () {
+    var d = L.dateDepuisCle("2026-11-16");
+    verifier(d instanceof Date, "ce n’est pas un objet Date");
+    egal(d.getFullYear(), 2026);
+    egal(d.getMonth(), 10);
+    egal(d.getDate(), 16);
+    egal(d.getHours(), 12);
+    egal(d.getMinutes(), 0);
+  });
+
+  test("dateDepuisCle renvoie null pour une clé invalide", function () {
+    egal(L.dateDepuisCle("2026-02-30"), null);
+    egal(L.dateDepuisCle("demain"), null);
+    egal(L.dateDepuisCle(undefined), null);
+  });
+
+  test("cleDate(dateDepuisCle(cle)) redonne la clé pour chaque jour de 2026", function () {
+    var liste = plage("2026-01-01", "2026-12-31");
+    var i;
+    egal(liste.length, 365, "nombre de jours en 2026");
+    for (i = 0; i < liste.length; i++) {
+      egal(L.cleDate(L.dateDepuisCle(liste[i])), liste[i]);
+    }
+  });
+
+  test("ajouterJours passe correctement les fins de mois et d’année", function () {
+    egal(L.ajouterJours("2026-01-31", 1), "2026-02-01");
+    egal(L.ajouterJours("2026-04-30", 1), "2026-05-01");
+    egal(L.ajouterJours("2026-12-31", 1), "2027-01-01");
+    egal(L.ajouterJours("2027-01-01", -1), "2026-12-31");
+    egal(L.ajouterJours("2026-03-01", -1), "2026-02-28");
+  });
+
+  test("ajouterJours gère les années bissextiles", function () {
+    egal(L.ajouterJours("2028-02-28", 1), "2028-02-29");
+    egal(L.ajouterJours("2028-02-29", 1), "2028-03-01");
+    egal(L.ajouterJours("2028-03-01", -1), "2028-02-29");
+    egal(L.ajouterJours("2027-02-28", 1), "2027-03-01");
+  });
+
+  test("ajouterJours traverse le passage à l’heure d’été (fin mars)", function () {
+    egal(L.ajouterJours("2026-03-28", 1), "2026-03-29");
+    egal(L.ajouterJours("2026-03-29", 1), "2026-03-30");
+    egal(L.ajouterJours("2026-03-30", -1), "2026-03-29");
+    egal(L.ajouterJours("2026-03-29", -1), "2026-03-28");
+    egal(L.ecartJours("2026-03-28", "2026-03-30"), 2);
+  });
+
+  test("ajouterJours traverse le passage à l’heure d’hiver (fin octobre)", function () {
+    egal(L.ajouterJours("2026-10-24", 1), "2026-10-25");
+    egal(L.ajouterJours("2026-10-25", 1), "2026-10-26");
+    egal(L.ajouterJours("2026-10-26", -1), "2026-10-25");
+    egal(L.ajouterJours("2026-10-25", -1), "2026-10-24");
+    egal(L.ecartJours("2026-10-24", "2026-10-26"), 2);
+  });
+
+  test("ajouterJours accepte 0, les grands décalages et les décalages négatifs", function () {
+    egal(L.ajouterJours("2026-07-14", 0), "2026-07-14");
+    egal(L.ajouterJours("2026-01-01", 365), "2027-01-01");
+    egal(L.ajouterJours("2026-03-01", -365), "2025-03-01");
+    egal(L.ajouterJours("2028-01-01", 366), "2029-01-01");
+  });
+
+  test("avancer d’un jour 365 fois depuis le 1er janvier 2026 mène au 1er janvier 2027", function () {
+    var c = "2026-01-01";
+    var i, suivant;
+    for (i = 0; i < 365; i++) {
+      suivant = L.ajouterJours(c, 1);
+      verifier(L.estCleValide(suivant), "clé invalide après " + c);
+      verifier(suivant > c, "la clé n’avance pas après " + c);
+      egal(L.ecartJours(c, suivant), 1);
+      c = suivant;
+    }
+    egal(c, "2027-01-01");
+  });
+
+  test("ajouterJours renvoie null pour une clé invalide", function () {
+    egal(L.ajouterJours("2026-13-01", 1), null);
+    egal(L.ajouterJours("", 1), null);
+    egal(L.ajouterJours(null, 1), null);
+  });
+
+  test("jourSemaine : 0 pour dimanche, 6 pour samedi", function () {
+    egal(L.jourSemaine("2024-01-01"), 1, "lundi 1er janvier 2024");
+    egal(L.jourSemaine("2026-11-16"), 1, "lundi 16 novembre 2026");
+    egal(L.jourSemaine("2026-03-15"), 0, "dimanche 15 mars 2026");
+    egal(L.jourSemaine("2026-03-14"), 6, "samedi 14 mars 2026");
+    egal(L.jourSemaine("2028-02-29"), 2, "mardi 29 février 2028");
+    egal(L.jourSemaine("pas une date"), null);
+  });
+
+  test("jourSemaine est d’accord avec Date.getDay pour chaque jour de 2026", function () {
+    var liste = plage("2026-01-01", "2026-12-31");
+    var i;
+    for (i = 0; i < liste.length; i++) {
+      egal(L.jourSemaine(liste[i]), L.dateDepuisCle(liste[i]).getDay(), liste[i]);
+    }
+  });
+
+  test("cleLundi un dimanche renvoie le lundi précédent (semaine lundi-dimanche)", function () {
+    egal(L.cleLundi("2026-03-15"), "2026-03-09");
+  });
+
+  test("cleLundi un lundi renvoie le jour même, et en milieu de semaine le lundi", function () {
+    egal(L.cleLundi("2026-03-09"), "2026-03-09");
+    egal(L.cleLundi("2026-03-11"), "2026-03-09");
+    egal(L.cleLundi("2026-03-14"), "2026-03-09");
+  });
+
+  test("cleLundi traverse les limites de mois et d’année", function () {
+    egal(L.cleLundi("2026-03-01"), "2026-02-23");
+    egal(L.cleLundi("2027-01-01"), "2026-12-28");
+    egal(L.cleLundi("mardi"), null);
+  });
+
+  test("ecartJours compte les jours de A vers B, avec le signe", function () {
+    egal(L.ecartJours("2026-03-09", "2026-03-09"), 0);
+    egal(L.ecartJours("2026-03-09", "2026-03-16"), 7);
+    egal(L.ecartJours("2026-03-16", "2026-03-09"), -7);
+    egal(L.ecartJours("2028-01-01", "2029-01-01"), 366);
+    egal(L.ecartJours("2026-01-01", "2027-01-01"), 365);
+    egal(L.ecartJours("2026-01-01", "n’importe quoi"), null);
+  });
+
+  test("estCleValide accepte les vraies dates au bon format", function () {
+    verifier(L.estCleValide("2026-11-16"));
+    verifier(L.estCleValide("2024-02-29"), "29 février 2024");
+    verifier(L.estCleValide("2000-02-29"), "29 février 2000");
+    verifier(L.estCleValide("2026-12-31"));
+  });
+
+  test("estCleValide refuse les dates impossibles et les mauvais formats", function () {
+    var mauvaises = ["2026-02-30", "2026-02-29", "2100-02-29", "2026-13-01", "2026-00-10", "2026-04-31",
+      "2026-01-00", "2026-3-1", "26-03-01", "20260301", "2026/03/01", " 2026-03-01", "2026-03-01 ",
+      "2026-03-01T12:00:00", "", "abc", "__proto__", "0000-01-01"];
+    var autres = [null, undefined, 20260301, {}, [], true, new Date(2026, 2, 1)];
+    var i;
+    for (i = 0; i < mauvaises.length; i++) {
+      egal(L.estCleValide(mauvaises[i]), false, "« " + mauvaises[i] + " »");
+    }
+    for (i = 0; i < autres.length; i++) {
+      egal(L.estCleValide(autres[i]), false, "valeur n° " + i);
+    }
+  });
+
+  test("grilleMois de février 2028 (bissextile, commence un mardi)", function () {
+    var g = L.grilleMois(2028, 2);
+    egal(g.length, 5, "nombre de semaines");
+    pareil(g[0], [null, "2028-02-01", "2028-02-02", "2028-02-03", "2028-02-04", "2028-02-05", "2028-02-06"]);
+    pareil(g[4], ["2028-02-28", "2028-02-29", null, null, null, null, null]);
+  });
+
+  test("grilleMois de février 2026 (commence un dimanche)", function () {
+    var g = L.grilleMois(2026, 2);
+    egal(g.length, 5, "nombre de semaines");
+    pareil(g[0], [null, null, null, null, null, null, "2026-02-01"]);
+    pareil(g[4], ["2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-02-28", null]);
+  });
+
+  test("grilleMois de février 2027 : exactement 4 semaines pleines", function () {
+    var g = L.grilleMois(2027, 2);
+    egal(g.length, 4, "nombre de semaines");
+    egal(g[0][0], "2027-02-01");
+    egal(g[3][6], "2027-02-28");
+  });
+
+  test("grilleMois de juin 2026 (commence un lundi, 30 jours)", function () {
+    var g = L.grilleMois(2026, 6);
+    egal(g.length, 5, "nombre de semaines");
+    egal(g[0][0], "2026-06-01");
+    pareil(g[4], ["2026-06-29", "2026-06-30", null, null, null, null, null]);
+  });
+
+  test("grilleMois d’août 2026 : 6 semaines (31 jours, commence un samedi)", function () {
+    var g = L.grilleMois(2026, 8);
+    egal(g.length, 6, "nombre de semaines");
+    pareil(g[0], [null, null, null, null, null, "2026-08-01", "2026-08-02"]);
+    pareil(g[5], ["2026-08-31", null, null, null, null, null, null]);
+  });
+
+  test("grilleMois : chaque mois de 2024 à 2030 est complet et bien aligné", function () {
+    var annee, mois, g, s, c, cle, attendu, compte, nonVide;
+    for (annee = 2024; annee <= 2030; annee++) {
+      for (mois = 1; mois <= 12; mois++) {
+        g = L.grilleMois(annee, mois);
+        attendu = annee + "-" + (mois < 10 ? "0" : "") + mois + "-01";
+        compte = 0;
+        for (s = 0; s < g.length; s++) {
+          egal(g[s].length, 7, "longueur de semaine en " + annee + "-" + mois);
+          nonVide = false;
+          for (c = 0; c < 7; c++) {
+            cle = g[s][c];
+            if (cle !== null) {
+              nonVide = true;
+              egal(cle, attendu, "ordre des jours");
+              egal((L.jourSemaine(cle) + 6) % 7, c, "colonne de " + cle);
+              attendu = L.ajouterJours(attendu, 1);
+              compte++;
+            }
+          }
+          verifier(nonVide, "semaine entièrement vide en " + annee + "-" + mois);
+        }
+        egal(compte, new Date(annee, mois, 0).getDate(), "nombre de jours en " + annee + "-" + mois);
+      }
+    }
+  });
+
+  test("grilleMois renvoie [] pour des arguments invalides", function () {
+    pareil(L.grilleMois(2026, 0), []);
+    pareil(L.grilleMois(2026, 13), []);
+    pareil(L.grilleMois(2026, 1.5), []);
+    pareil(L.grilleMois("2026", "2"), []);
+  });
+
+  test("indexSemaine compte les semaines entières depuis le lundi 1er janvier 2024", function () {
+    egal(L.indexSemaine("2024-01-01"), 0);
+    egal(L.indexSemaine("2024-01-07"), 0);
+    egal(L.indexSemaine("2024-01-08"), 1);
+    egal(L.indexSemaine("2023-12-31"), -1);
+    egal(L.indexSemaine("2026-11-16"), 150);
+    egal(L.indexSemaine("2026-11-22"), 150);
+    egal(L.indexSemaine("2026-11-23"), 151);
+  });
+
+  test("formaterDate écrit la date en français", function () {
+    egal(L.formaterDate("2026-11-16"), "lundi 16 novembre");
+    egal(L.formaterDate("2026-11-16", true), "lundi 16 novembre 2026");
+    egal(L.formaterDate("2026-03-01"), "dimanche 1er mars");
+    egal(L.formaterDate("2026-08-15", true), "samedi 15 août 2026");
+    egal(L.formaterDate("pas une date"), "");
+  });
+
+  /* ================================================================== */
+  groupe("Hasard déterministe");
+  /* ================================================================== */
+
+  test("hacher donne les valeurs de référence FNV-1a (figées pour toujours)", function () {
+    egal(L.hacher("abc"), 440920331);
+    egal(L.hacher(""), 2166136261);
+    egal(L.hacher("lignes|cycle|12"), 1735300780);
+    egal(L.hacher("éà’"), 4243596655);
+  });
+
+  test("mulberry32 donne la suite de référence pour la graine 42", function () {
+    var alea = L.mulberry32(42);
+    proche(alea(), 0.6011037519201636);
+    proche(alea(), 0.44829055899754167);
+    proche(alea(), 0.8524657934904099);
+  });
+
+  test("mulberry32 reste dans [0, 1[ et deux graines égales donnent la même suite", function () {
+    var a = L.mulberry32(2026);
+    var b = L.mulberry32(2026);
+    var i, x;
+    for (i = 0; i < 500; i++) {
+      x = a();
+      verifier(x >= 0 && x < 1, "valeur hors limites : " + x);
+      egal(b(), x);
+    }
+  });
+
+  test("permutation donne l’ordre de référence (figé pour toujours)", function () {
+    pareil(L.permutation(8, 12345), [3, 0, 1, 5, 4, 6, 2, 7]);
+    pareil(L.permutation(10, L.hacher("lignes|cycle|12")), [1, 2, 5, 7, 8, 6, 3, 9, 0, 4]);
+  });
+
+  test("permutation contient chaque entier une seule fois, y compris pour n = 0 et 1", function () {
+    var n, p, tri, i;
+    pareil(L.permutation(0, 7), []);
+    pareil(L.permutation(1, 7), [0]);
+    for (n = 2; n <= 40; n++) {
+      p = L.permutation(n, n * 977);
+      tri = p.slice().sort(function (x, y) { return x - y; });
+      egal(p.length, n);
+      for (i = 0; i < n; i++) {
+        egal(tri[i], i, "n = " + n);
+      }
+    }
+  });
+
+  /* ================================================================== */
+  groupe("Exercice du jour (données réelles)");
+  /* ================================================================== */
+
+  test("MAX_TIRAGES vaut 2", function () {
+    egal(L.MAX_TIRAGES, 2);
+  });
+
+  test("themeDuJour renvoie le thème du bon jour de la semaine", function () {
+    var i, js, t;
+    for (i = 0; i < ORDRE_JOURS.length; i++) {
+      js = ORDRE_JOURS[i];
+      t = L.themeDuJour(cleDe(150, js));
+      verifier(t, "pas de thème pour " + ATTENDUS[js].jour);
+      egal(t.cle, ATTENDUS[js].cle, ATTENDUS[js].jour);
+      verifier(t === DDJ.themes[js], "ce n’est pas l’objet de DDJ.themes");
+    }
+    egal(L.themeDuJour("pas une date"), null);
+  });
+
+  test("exerciceDuJour renvoie un exercice complet et enrichi chaque jour de la semaine", function () {
+    var i, js, e;
+    for (i = 0; i < ORDRE_JOURS.length; i++) {
+      js = ORDRE_JOURS[i];
+      e = exo(cleDe(150, js), 0);
+      egal(e.themeCle, ATTENDUS[js].cle, "themeCle du " + ATTENDUS[js].jour);
+      egal(e.themeNom, ATTENDUS[js].nom, "themeNom du " + ATTENDUS[js].jour);
+      egal(typeof e.genere, "boolean", "genere");
+      verifier(typeof e.id === "string" && e.id !== "", "id manquant");
+      verifier(typeof e.titre === "string" && e.titre !== "", "titre manquant");
+      verifier(typeof e.consigne === "string" && e.consigne !== "", "consigne manquante");
+      egal(e.etapes.length, 3, "nombre d’étapes");
+      verifier(e.duree === 15 || e.duree === 20 || e.duree === 30, "durée inattendue : " + e.duree);
+    }
+  });
+
+  test("exerciceDuJour est déterministe (mêmes arguments, même résultat)", function () {
+    var j, t, cle;
+    for (j = 0; j < 60; j++) {
+      cle = L.ajouterJours("2026-11-16", j);
+      for (t = 0; t <= 2; t++) {
+        pareil(L.exerciceDuJour(cle, t), L.exerciceDuJour(cle, t), cle + " tirage " + t);
+      }
+    }
+  });
+
+  test("exerciceDuJour renvoie une copie : la modifier n’abîme pas la banque", function () {
+    var cle = cleDe(150, 1);
+    var avant = stable(exo(cle, 0));
+    var e = exo(cle, 0);
+    e.titre = "Modifié";
+    e.etapes.push("une étape en trop");
+    e.etapes[0] = "changée";
+    egal(stable(exo(cle, 0)), avant);
+    verifier(themeReel(1).exercices.every(function (x) { return x.themeCle === undefined && x.genere === undefined; }),
+      "la banque a été enrichie par erreur");
+  });
+
+  (function () {
+    var i;
+    function testCycle(js) {
+      test("thème du " + ATTENDUS[js].jour.toLowerCase() + " : aucun exercice ne revient avant la fin du cycle", function () {
+        var n = themeReel(js).exercices.length;
+        var cycles = [-1, 0, 9, 10];
+        var c, k, e, vus, compte;
+        for (c = 0; c < cycles.length; c++) {
+          vus = {};
+          compte = 0;
+          for (k = 0; k < n; k++) {
+            e = exo(cleDe(cycles[c] * n + k, js), 0);
+            egal(e.genere, false, "exercice de la banque attendu");
+            verifier(e.id.indexOf(ATTENDUS[js].prefixe) === 0, "préfixe inattendu : " + e.id);
+            verifier(vus[e.id] !== true, "« " + e.id + " » revient deux fois dans le cycle " + cycles[c]);
+            vus[e.id] = true;
+            compte++;
+          }
+          egal(compte, n, "le cycle doit parcourir tous les exercices");
+        }
+      });
+    }
+    for (i = 0; i < JOURS_BANQUE.length; i++) {
+      testCycle(JOURS_BANQUE[i]);
+    }
+  })();
+
+  test("jamais le même exercice deux semaines de suite, même d’un cycle au suivant", function () {
+    var i, js, s, precedent, e;
+    for (i = 0; i < JOURS_BANQUE.length; i++) {
+      js = JOURS_BANQUE[i];
+      precedent = null;
+      for (s = -20; s < 320; s++) {
+        e = exo(cleDe(s, js), 0);
+        verifier(e.id !== precedent, "« " + e.id + " » deux semaines de suite (semaine " + s + ")");
+        precedent = e.id;
+      }
+    }
+  });
+
+  test("les tirages 0, 1 et 2 donnent trois exercices différents du même thème", function () {
+    var i, js, s, a, b, c;
+    for (i = 0; i < JOURS_BANQUE.length; i++) {
+      js = JOURS_BANQUE[i];
+      for (s = 100; s < 220; s++) {
+        a = exo(cleDe(s, js), 0);
+        b = exo(cleDe(s, js), 1);
+        c = exo(cleDe(s, js), 2);
+        verifier(a.id !== b.id && a.id !== c.id && b.id !== c.id,
+          "tirages identiques semaine " + s + " : " + a.id + ", " + b.id + ", " + c.id);
+        egal(b.themeCle, a.themeCle);
+        egal(c.themeCle, a.themeCle);
+        egal(b.genere, false);
+        egal(c.genere, false);
+      }
+    }
+  });
+
+  test("les tirages 1 et 2 évitent l’exercice prévu la semaine suivante", function () {
+    var i, js, s, suivant;
+    for (i = 0; i < JOURS_BANQUE.length; i++) {
+      js = JOURS_BANQUE[i];
+      for (s = 100; s < 220; s++) {
+        suivant = exo(cleDe(s + 1, js), 0).id;
+        verifier(exo(cleDe(s, js), 1).id !== suivant, "tirage 1 = semaine suivante (semaine " + s + ")");
+        verifier(exo(cleDe(s, js), 2).id !== suivant, "tirage 2 = semaine suivante (semaine " + s + ")");
+      }
+    }
+  });
+
+  test("tirage absent, négatif ou trop grand : ramené dans 0..MAX_TIRAGES", function () {
+    var cle = cleDe(150, 3);
+    pareil(L.exerciceDuJour(cle), L.exerciceDuJour(cle, 0), "tirage absent");
+    pareil(L.exerciceDuJour(cle, -1), L.exerciceDuJour(cle, 0), "tirage -1");
+    pareil(L.exerciceDuJour(cle, 5), L.exerciceDuJour(cle, 2), "tirage 5");
+    pareil(L.exerciceDuJour(cle, "1"), L.exerciceDuJour(cle, 0), "tirage non numérique");
+    pareil(L.exerciceDuJour(cle, NaN), L.exerciceDuJour(cle, 0), "tirage NaN");
+  });
+
+  test("exerciceDuJour renvoie null pour une clé invalide", function () {
+    egal(L.exerciceDuJour("2026-02-30", 0), null);
+    egal(L.exerciceDuJour("", 0), null);
+    egal(L.exerciceDuJour(null), null);
+  });
+
+  test("samedi, semaine d’index impair : l’exercice du tirage 0 est généré", function () {
+    var s, e;
+    generateurReel();
+    for (s = 101; s < 181; s += 2) {
+      e = exo(cleDe(s, 6), 0);
+      egal(e.genere, true, "semaine " + s);
+      verifier(/^gen-\d+-\d+$/.test(e.id), "id inattendu : " + e.id);
+      egal(e.themeCle, "imagination");
+    }
+  });
+
+  test("samedi, semaine d’index pair : l’exercice du tirage 0 vient de la banque", function () {
+    var s, e;
+    generateurReel();
+    for (s = 100; s < 180; s += 2) {
+      e = exo(cleDe(s, 6), 0);
+      egal(e.genere, false, "semaine " + s);
+      verifier(e.id.indexOf("sam-") === 0, "id inattendu : " + e.id);
+      egal(e.themeCle, "imagination");
+    }
+  });
+
+  test("samedi : les tirages 1 et 2 sont toujours générés, différents entre eux et du tirage 0", function () {
+    var s, a, b, c;
+    generateurReel();
+    for (s = 100; s < 180; s++) {
+      a = exo(cleDe(s, 6), 0);
+      b = exo(cleDe(s, 6), 1);
+      c = exo(cleDe(s, 6), 2);
+      egal(b.genere, true, "tirage 1, semaine " + s);
+      egal(c.genere, true, "tirage 2, semaine " + s);
+      verifier(a.id !== b.id && a.id !== c.id && b.id !== c.id,
+        "tirages identiques semaine " + s + " : " + a.id + ", " + b.id + ", " + c.id);
+      verifier(a.titre !== b.titre && b.titre !== c.titre && a.titre !== c.titre, "titres identiques semaine " + s);
+    }
+  });
+
+  test("samedi : la banque est parcourue en entier avant de recommencer", function () {
+    var n = themeReel(6).exercices.length;
+    var cycles = [0, 4];
+    var c, k, e, vus;
+    generateurReel();
+    for (c = 0; c < cycles.length; c++) {
+      vus = {};
+      for (k = 0; k < n; k++) {
+        e = exo(cleDe(2 * (cycles[c] * n + k), 6), 0);
+        egal(e.genere, false);
+        verifier(vus[e.id] !== true, "« " + e.id + " » revient deux fois dans le cycle " + cycles[c]);
+        vus[e.id] = true;
+      }
+    }
+  });
+
+  test("exercice généré : forme complète et titre « sujet + contrainte » avec majuscule", function () {
+    var g = generateurReel();
+    var e = exo(cleDe(151, 6), 0);
+    var m = /^gen-(\d+)-(\d+)$/.exec(e.id);
+    var sujet, contrainte, attendu;
+    verifier(m, "id inattendu : " + e.id);
+    sujet = g.sujets[parseInt(m[1], 10)];
+    contrainte = g.contraintes[parseInt(m[2], 10)];
+    attendu = sujet + " " + contrainte;
+    attendu = attendu.charAt(0).toUpperCase() + attendu.slice(1);
+    egal(e.titre, attendu);
+    egal(e.duree, 20);
+    egal(e.genere, true);
+    egal(e.themeNom, "Imagination");
+    egal(e.etapes.length, 3);
+    verifier(e.etapes.every(function (x) { return /^\d+ min : /.test(x); }), "étapes sans indication de temps");
+    verifier(typeof e.consigne === "string" && e.consigne.length > 20, "consigne trop courte");
+    verifier(typeof e.materiel === "string" && e.materiel !== "", "matériel manquant");
+    verifier(e.siBloque.indexOf(sujet) !== -1, "siBloque devrait garder le sujet");
+    verifier(e.siBloque.indexOf(sujet + " " + contrainte) === -1, "siBloque devrait oublier la contrainte");
+  });
+
+  test("exercice généré : « si tu bloques » sans pronom à accorder, matériel qui permet le stylo", function () {
+    var g = generateurReel();
+    var i, e;
+    for (i = 0; i < g.sujets.length; i++) {
+      e = L.exerciceGenere(i, 0);
+      egal(e.siBloque, "Oublie la contrainte : dessine simplement " + g.sujets[i] + ", à ta façon.", "sujet n° " + (i + 1));
+    }
+    egal(L.exerciceGenere(0, 0).materiel, "Crayon ou stylo, et papier");
+  });
+
+  test("le générateur varie : beaucoup de sujets différents sur un an de samedis", function () {
+    var vus = {};
+    var compte = 0;
+    var s, t, m;
+    generateurReel();
+    for (s = 150; s < 202; s++) {
+      for (t = 1; t <= 2; t++) {
+        m = /^gen-(\d+)-(\d+)$/.exec(exo(cleDe(s, 6), t).id);
+        if (vus[m[1]] !== true) {
+          vus[m[1]] = true;
+          compte++;
+        }
+      }
+    }
+    verifier(compte >= 15, "seulement " + compte + " sujets différents");
+  });
+
+  /* ================================================================== */
+  groupe("Exercice du jour (cas limites, données factices)");
+  /* ================================================================== */
+
+  test("exemple du cahier des charges : « Un phare en pleine tempête »", function () {
+    avecDonnees(themesFactices(5), { sujets: ["un phare"], contraintes: ["en pleine tempête"] }, function () {
+      var e = L.exerciceGenere(0, 0);
+      egal(e.id, "gen-0-0");
+      egal(e.titre, "Un phare en pleine tempête");
+      egal(e.genere, true);
+      egal(e.themeCle, "imagination");
+    });
+  });
+
+  test("thèmes absents : null, sans exception", function () {
+    avecDonnees(undefined, undefined, function () {
+      egal(L.exerciceDuJour("2026-11-16", 0), null);
+      egal(L.exerciceDuJour("2026-11-21", 0), null);
+      egal(L.themeDuJour("2026-11-16"), null);
+      egal(L.exerciceParId("lun-01"), null);
+    });
+    avecDonnees({}, generateurFactice(), function () {
+      egal(L.exerciceDuJour("2026-11-16", 1), null);
+      egal(L.exerciceDuJour("2026-11-21", 0), null);
+    });
+  });
+
+  test("thème sans exercices : null, sans exception", function () {
+    var themes = themesFactices(4);
+    themes[1].exercices = [];
+    delete themes[2].exercices;
+    avecDonnees(themes, generateurFactice(), function () {
+      egal(L.exerciceDuJour("2026-11-16", 0), null, "lundi, banque vide");
+      egal(L.exerciceDuJour("2026-11-16", 2), null, "lundi, banque vide, tirage 2");
+      egal(L.exerciceDuJour("2026-11-17", 0), null, "mardi, banque absente");
+      verifier(L.exerciceDuJour("2026-11-18", 0) !== null, "le mercredi devrait fonctionner");
+    });
+  });
+
+  test("samedi sans générateur (absent ou vide) : on se rabat sur la banque", function () {
+    var generateurs = [undefined, null, {}, { sujets: [], contraintes: [] }, { sujets: ["un phare"], contraintes: [] }];
+    var i;
+    function verifierRepli() {
+      var s, a, b, c;
+      for (s = 150; s < 156; s++) {
+        a = exo(cleDe(s, 6), 0);
+        b = exo(cleDe(s, 6), 1);
+        c = exo(cleDe(s, 6), 2);
+        egal(a.genere, false);
+        egal(b.genere, false);
+        egal(c.genere, false);
+        verifier(a.id !== b.id && a.id !== c.id && b.id !== c.id, "tirages identiques");
+      }
+    }
+    for (i = 0; i < generateurs.length; i++) {
+      avecDonnees(themesFactices(6), generateurs[i], verifierRepli);
+    }
+  });
+
+  test("samedi sans banque mais avec générateur : toujours un exercice généré", function () {
+    var themes = themesFactices(4);
+    themes[6].exercices = [];
+    avecDonnees(themes, generateurFactice(), function () {
+      egal(exo(cleDe(150, 6), 0).genere, true, "semaine paire");
+      egal(exo(cleDe(151, 6), 0).genere, true, "semaine impaire");
+      egal(exo(cleDe(150, 6), 2).genere, true, "tirage 2");
+    });
+  });
+
+  test("samedi sans banque ni générateur : null, sans exception", function () {
+    var themes = themesFactices(4);
+    themes[6].exercices = [];
+    avecDonnees(themes, undefined, function () {
+      egal(L.exerciceDuJour(cleDe(150, 6), 0), null);
+      egal(L.exerciceDuJour(cleDe(151, 6), 1), null);
+    });
+  });
+
+  test("thème d’un seul exercice : tous les tirages le renvoient, sans exception", function () {
+    avecDonnees(themesFactices(1), generateurFactice(), function () {
+      egal(exo(cleDe(150, 1), 0).id, "lun-01");
+      egal(exo(cleDe(150, 1), 1).id, "lun-01");
+      egal(exo(cleDe(150, 1), 2).id, "lun-01");
+      egal(exo(cleDe(-3, 1), 0).id, "lun-01");
+    });
+  });
+
+  test("thème de deux exercices : le tirage 1 donne l’autre exercice", function () {
+    avecDonnees(themesFactices(2), generateurFactice(), function () {
+      var s, a, b;
+      for (s = 150; s < 160; s++) {
+        a = exo(cleDe(s, 2), 0);
+        b = exo(cleDe(s, 2), 1);
+        verifier(a.id !== b.id, "tirage 1 identique au tirage 0, semaine " + s);
+        verifier(L.exerciceDuJour(cleDe(s, 2), 2) !== null, "tirage 2 null");
+      }
+    });
+  });
+
+  test("thème de trois exercices : cycles complets et jamais deux semaines de suite", function () {
+    avecDonnees(themesFactices(3), generateurFactice(), function () {
+      var precedent = null;
+      var s, e, c, vus;
+      for (s = 0; s < 90; s++) {
+        e = exo(cleDe(s, 4), 0);
+        verifier(e.id !== precedent, "répétition immédiate semaine " + s);
+        precedent = e.id;
+      }
+      for (c = 0; c < 30; c++) {
+        vus = {};
+        vus[exo(cleDe(c * 3, 4), 0).id] = true;
+        vus[exo(cleDe(c * 3 + 1, 4), 0).id] = true;
+        vus[exo(cleDe(c * 3 + 2, 4), 0).id] = true;
+        egal(Object.keys(vus).length, 3, "cycle " + c);
+      }
+    });
+  });
+
+  test("le même thème factice donne les mêmes exercices quelle que soit la taille des autres", function () {
+    var themesA = themesFactices(7);
+    var themesB = themesFactices(7);
+    var a, b;
+    themesB[2].exercices = themesB[2].exercices.slice(0, 3);
+    a = avecDonnees(themesA, generateurFactice(), function () { return exo(cleDe(150, 1), 0).id; });
+    b = avecDonnees(themesB, generateurFactice(), function () { return exo(cleDe(150, 1), 0).id; });
+    egal(a, b);
+  });
+
+  test("petit générateur (2 sujets × 2 contraintes) : trois combinaisons différentes", function () {
+    avecDonnees(themesFactices(4), { sujets: ["un phare", "un chat"], contraintes: ["la nuit", "sous la mer"] }, function () {
+      var s, a, b, c;
+      for (s = 151; s < 171; s += 2) {
+        a = exo(cleDe(s, 6), 0);
+        b = exo(cleDe(s, 6), 1);
+        c = exo(cleDe(s, 6), 2);
+        verifier(a.id !== b.id && a.id !== c.id && b.id !== c.id, "combinaisons identiques semaine " + s);
+      }
+    });
+  });
+
+  test("générateur minuscule (1 sujet × 1 contrainte) : pas d’exception", function () {
+    avecDonnees(themesFactices(4), { sujets: ["un phare"], contraintes: ["en pleine tempête"] }, function () {
+      egal(exo(cleDe(151, 6), 0).id, "gen-0-0");
+      egal(exo(cleDe(151, 6), 1).id, "gen-0-0");
+      egal(exo(cleDe(151, 6), 2).id, "gen-0-0");
+    });
+  });
+
+  /* ================================================================== */
+  groupe("exerciceParId");
+  /* ================================================================== */
+
+  test("retrouve chaque exercice de la banque réelle, avec son thème", function () {
+    var i, k, js, liste, e, compte = 0;
+    for (i = 0; i < ORDRE_JOURS.length; i++) {
+      js = ORDRE_JOURS[i];
+      liste = themeReel(js).exercices;
+      for (k = 0; k < liste.length; k++) {
+        e = L.exerciceParId(liste[k].id);
+        verifier(e, "introuvable : " + liste[k].id);
+        egal(e.id, liste[k].id);
+        egal(e.titre, liste[k].titre);
+        egal(e.themeCle, ATTENDUS[js].cle, liste[k].id);
+        egal(e.themeNom, ATTENDUS[js].nom, liste[k].id);
+        egal(e.genere, false);
+        compte++;
+      }
+    }
+    verifier(compte >= 70, "seulement " + compte + " exercices trouvés");
+  });
+
+  test("renvoie une copie : la modifier n’abîme pas la banque", function () {
+    var id = themeReel(1).exercices[0].id;
+    var avant = stable(L.exerciceParId(id));
+    var e = L.exerciceParId(id);
+    e.titre = "Modifié";
+    e.etapes.length = 0;
+    egal(stable(L.exerciceParId(id)), avant);
+  });
+
+  test("reconstruit un exercice généré à partir de « gen-0-0 »", function () {
+    var g = generateurReel();
+    var e = L.exerciceParId("gen-0-0");
+    var attendu = g.sujets[0] + " " + g.contraintes[0];
+    verifier(e, "gen-0-0 introuvable");
+    egal(e.id, "gen-0-0");
+    egal(e.genere, true);
+    egal(e.titre, attendu.charAt(0).toUpperCase() + attendu.slice(1));
+    egal(e.themeCle, "imagination");
+  });
+
+  test("aller-retour : l’id d’un exercice du jour redonne exactement le même exercice", function () {
+    var j, t, cle, e;
+    for (j = 0; j < 28; j++) {
+      cle = L.ajouterJours("2026-11-16", j);
+      for (t = 0; t <= 2; t++) {
+        e = exo(cle, t);
+        pareil(L.exerciceParId(e.id), e, cle + " tirage " + t);
+      }
+    }
+  });
+
+  test("renvoie null pour un id inconnu, hors limites ou mal formé", function () {
+    var mauvais = ["", "lun-999", "xyz-01", "gen-999999-0", "gen-0-999999", "gen-a-b", "gen-1", "gen--1-2",
+      "gen-1-2-3", "GEN-0-0", "toString", "__proto__", "constructor", null, undefined, 42, {}, []];
+    var i;
+    for (i = 0; i < mauvais.length; i++) {
+      egal(L.exerciceParId(mauvais[i]), null, "id n° " + i + " (" + stable(mauvais[i]) + ")");
+    }
+  });
+
+  /* ================================================================== */
+  groupe("Série et joker");
+  /* ================================================================== */
+  /* Repères : lundi 2 mars 2026 … dimanche 8 mars ; lundi 9 mars … dimanche 15 mars. */
+
+  test("aucun jour fait : série 0, pas de joker, joker disponible", function () {
+    pareil(L.calculerSerie({}, "2026-03-11"),
+      { serie: 0, jokers: [], faitAujourdHui: false, jokerDispoCetteSemaine: true });
+  });
+
+  test("seulement aujourd’hui : série 1", function () {
+    pareil(serie(["2026-03-11"], "2026-03-11"),
+      { serie: 1, jokers: [], faitAujourdHui: true, jokerDispoCetteSemaine: true });
+  });
+
+  test("aujourd’hui pas encore fait, hier fait : la série tient (1)", function () {
+    pareil(serie(["2026-03-10"], "2026-03-11"),
+      { serie: 1, jokers: [], faitAujourdHui: false, jokerDispoCetteSemaine: true });
+  });
+
+  test("trois jours de suite jusqu’à aujourd’hui : série 3", function () {
+    var r = serie(["2026-03-09", "2026-03-10", "2026-03-11"], "2026-03-11");
+    egal(r.serie, 3);
+    egal(r.faitAujourdHui, true);
+    pareil(r.jokers, []);
+  });
+
+  test("trois jours de suite jusqu’à hier, aujourd’hui pas encore fait : série 3", function () {
+    var r = serie(["2026-03-08", "2026-03-09", "2026-03-10"], "2026-03-11");
+    egal(r.serie, 3);
+    egal(r.faitAujourdHui, false);
+    pareil(r.jokers, []);
+    egal(r.jokerDispoCetteSemaine, true);
+  });
+
+  test("joker simple : un jour manqué au milieu ne casse pas la série", function () {
+    var r = serie(["2026-03-09", "2026-03-10", "2026-03-12", "2026-03-13"], "2026-03-13");
+    egal(r.serie, 4, "le jour couvert ne compte pas dans la série");
+    pareil(r.jokers, ["2026-03-11"]);
+    egal(r.faitAujourdHui, true);
+    egal(r.jokerDispoCetteSemaine, false);
+  });
+
+  test("hier manqué, aujourd’hui pas encore fait : hier est couvert par le joker", function () {
+    var r = serie(["2026-03-09", "2026-03-10"], "2026-03-12");
+    egal(r.serie, 2);
+    pareil(r.jokers, ["2026-03-11"]);
+    egal(r.faitAujourdHui, false);
+    egal(r.jokerDispoCetteSemaine, false);
+  });
+
+  test("aujourd’hui n’est jamais couvert par un joker", function () {
+    var r = serie(["2026-03-09", "2026-03-10"], "2026-03-11");
+    egal(r.serie, 2);
+    pareil(r.jokers, [], "aujourd’hui (non fait) ne doit pas consommer de joker");
+    egal(r.jokerDispoCetteSemaine, true);
+  });
+
+  test("deux manques la même semaine (à la suite) : la série s’arrête au second", function () {
+    var faits = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08",
+      "2026-03-09", "2026-03-12", "2026-03-13"];
+    var r = serie(faits, "2026-03-13");
+    egal(r.serie, 2, "seuls jeudi et vendredi comptent : une nouvelle chaîne");
+    pareil(r.jokers, [], "la nouvelle chaîne n’a consommé aucun joker");
+    egal(r.jokerDispoCetteSemaine, false, "le joker de la semaine a servi mardi, il reste consommé");
+    pareil(historique(faits, "2026-03-13"), ["2026-03-10"], "mardi reste couvert, mercredi ne l’est pas");
+  });
+
+  test("deux manques la même semaine (séparés) : le premier est couvert, le second rompt la chaîne", function () {
+    var faits = ["2026-03-08", "2026-03-09", "2026-03-11", "2026-03-13"];
+    var r = serie(faits, "2026-03-13");
+    egal(r.serie, 1, "vendredi seul : la chaîne s’est rompue jeudi");
+    pareil(r.jokers, []);
+    egal(r.faitAujourdHui, true);
+    egal(r.jokerDispoCetteSemaine, false);
+    pareil(historique(faits, "2026-03-13"), ["2026-03-10"], "le joker reste sur mardi, il ne glisse pas vers jeudi");
+    /* La veille au soir (jeudi pas encore fini), la chaîne tenait encore. */
+    r = serie(faits, "2026-03-12");
+    egal(r.serie, 3, "dimanche + lundi + mercredi");
+    pareil(r.jokers, ["2026-03-10"]);
+  });
+
+  test("hier et avant-hier manqués la même semaine : série 0 malgré un long passé", function () {
+    var faits = plage("2026-02-01", "2026-03-09");
+    var r = serie(faits, "2026-03-12");
+    pareil(r, { serie: 0, jokers: [], faitAujourdHui: false, jokerDispoCetteSemaine: false });
+    pareil(historique(faits, "2026-03-12"), ["2026-03-10"], "mardi a consommé le joker, mercredi a rompu la chaîne");
+  });
+
+  /* Exemple de référence : le joker ne change jamais de jour après coup. */
+  (function () {
+    var faitsMercredi = sans(plage("2026-02-01", "2026-03-11"), ["2026-03-10"]);
+
+    test("joker stable : vu du mercredi 11, le mardi 10 est couvert et la série vaut 38", function () {
+      var r = serie(faitsMercredi, "2026-03-11");
+      pareil(r, { serie: 38, jokers: ["2026-03-10"], faitAujourdHui: true, jokerDispoCetteSemaine: false });
+      pareil(historique(faitsMercredi, "2026-03-11"), ["2026-03-10"]);
+    });
+
+    test("joker stable : jeudi 12 non dessiné, vu du jeudi la série tient encore", function () {
+      var r = serie(faitsMercredi, "2026-03-12");
+      pareil(r, { serie: 38, jokers: ["2026-03-10"], faitAujourdHui: false, jokerDispoCetteSemaine: false });
+    });
+
+    test("joker stable : vu du vendredi 13 avant de dessiner, série 0 et le joker reste sur le mardi 10", function () {
+      var r = serie(faitsMercredi, "2026-03-13");
+      var h = historique(faitsMercredi, "2026-03-13");
+      pareil(r, { serie: 0, jokers: [], faitAujourdHui: false, jokerDispoCetteSemaine: false });
+      verifier(h.indexOf("2026-03-10") !== -1, "le mardi 10 doit rester couvert : " + stable(h));
+      verifier(h.indexOf("2026-03-12") === -1, "le jeudi 12 ne doit pas être couvert : " + stable(h));
+      pareil(h, ["2026-03-10"]);
+    });
+
+    test("joker stable : vu du vendredi 13 après avoir dessiné, une nouvelle série commence à 1", function () {
+      var faits = faitsMercredi.concat(["2026-03-13"]);
+      var r = serie(faits, "2026-03-13");
+      pareil(r, { serie: 1, jokers: [], faitAujourdHui: true, jokerDispoCetteSemaine: false });
+      pareil(historique(faits, "2026-03-13"), ["2026-03-10"]);
+      egal(L.meilleureSerie(jours(faits), "2026-03-13"), 38, "la série de 38 reste la meilleure");
+    });
+  })();
+
+  test("joker consommé, chaîne rompue, puis nouveau manque la même semaine : non couvert", function () {
+    /* Lundi 9 fait, mardi 10 couvert, mercredi 11 rompt ; jeudi 12 fait, vendredi 13 manqué, samedi 14 fait. */
+    var faits = ["2026-03-09", "2026-03-12", "2026-03-14"];
+    var r = serie(faits, "2026-03-14");
+    egal(r.serie, 1, "seul samedi compte : vendredi a rompu la chaîne de jeudi");
+    pareil(r.jokers, []);
+    egal(r.jokerDispoCetteSemaine, false);
+    pareil(historique(faits, "2026-03-14"), ["2026-03-10"], "vendredi 13 n’est pas couvert");
+    egal(L.meilleureSerie(jours(faits), "2026-03-14"), 1);
+    /* Le lundi suivant, un joker tout neuf est disponible. */
+    r = serie(faits.concat(["2026-03-15"]), "2026-03-17");
+    egal(r.serie, 2, "samedi + dimanche, lundi 16 couvert");
+    pareil(r.jokers, ["2026-03-16"]);
+  });
+
+  test("sans chaîne vivante, un jour manqué ne consomme rien", function () {
+    /* Lundi 9 fait, mardi 10 couvert, mercredi 11 rompt ; le jeudi 12 manqué ne consomme rien. */
+    var faits = ["2026-03-09", "2026-03-13"];
+    pareil(historique(faits, "2026-03-13"), ["2026-03-10"]);
+    /* Semaine suivante : rien fait du lundi 16 au mercredi 18, jeudi 19 fait, vendredi 20 manqué. */
+    faits = ["2026-03-09", "2026-03-19", "2026-03-21"];
+    pareil(historique(faits, "2026-03-21"), ["2026-03-10", "2026-03-20"],
+      "le joker de la semaine du 16 est intact jusqu’au vendredi 20");
+    egal(serie(faits, "2026-03-21").serie, 2);
+  });
+
+  test("dimanche et lundi manqués : deux semaines différentes, donc deux jokers", function () {
+    var faits = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-10"];
+    var r = serie(faits, "2026-03-10");
+    egal(r.serie, 7);
+    pareil(r.jokers, ["2026-03-08", "2026-03-09"]);
+    egal(r.jokerDispoCetteSemaine, false, "le joker du lundi 9 est dans la semaine en cours");
+    pareil(historique(faits, "2026-03-10"), ["2026-03-08", "2026-03-09"], "les deux jours sont couverts");
+  });
+
+  test("dimanche et lundi manqués, aujourd’hui (mardi) pas encore fait : la série tient", function () {
+    var faits = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07"];
+    var r = serie(faits, "2026-03-10");
+    egal(r.serie, 6);
+    pareil(r.jokers, ["2026-03-08", "2026-03-09"]);
+    egal(r.faitAujourdHui, false);
+    egal(r.jokerDispoCetteSemaine, false);
+  });
+
+  test("samedi et dimanche manqués (même semaine) : la série est cassée", function () {
+    var faits = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-09"];
+    var r = serie(faits, "2026-03-09");
+    egal(r.serie, 1);
+    pareil(r.jokers, []);
+    pareil(historique(faits, "2026-03-09"), ["2026-03-07"], "samedi couvert, dimanche rompt la chaîne");
+    egal(r.jokerDispoCetteSemaine, true, "le joker consommé samedi appartient à la semaine d’avant");
+  });
+
+  test("aucun joker n’est consommé avant le premier jour fait", function () {
+    var r = serie(["2026-03-13"], "2026-03-13");
+    egal(r.serie, 1);
+    pareil(r.jokers, []);
+    egal(r.jokerDispoCetteSemaine, true);
+    pareil(historique(["2026-03-13"], "2026-03-13"), []);
+  });
+
+  test("aucun joker n’est consommé avant le premier jour fait, même à cheval sur deux semaines", function () {
+    var r = serie(["2026-03-09"], "2026-03-09");
+    egal(r.serie, 1);
+    pareil(r.jokers, [], "le dimanche 8, que ne précède aucun jour fait, n’est pas un joker");
+    egal(r.jokerDispoCetteSemaine, true);
+    pareil(historique(["2026-03-09"], "2026-03-09"), []);
+  });
+
+  test("jokerDispoCetteSemaine reste vrai si le joker utilisé est dans la semaine d’avant", function () {
+    var r = serie(["2026-03-06", "2026-03-07", "2026-03-09"], "2026-03-09");
+    egal(r.serie, 3);
+    pareil(r.jokers, ["2026-03-08"]);
+    egal(r.jokerDispoCetteSemaine, true);
+  });
+
+  test("jokerDispoCetteSemaine devient faux dès qu’un joker tombe dans la semaine en cours", function () {
+    var r = serie(["2026-03-09", "2026-03-11"], "2026-03-11");
+    egal(r.serie, 2);
+    pareil(r.jokers, ["2026-03-10"]);
+    egal(r.jokerDispoCetteSemaine, false);
+  });
+
+  test("un joker par semaine pendant trois semaines : jokers triés par ordre croissant", function () {
+    var faits = sans(plage("2026-02-23", "2026-03-13"), ["2026-02-25", "2026-03-04", "2026-03-11"]);
+    var r = serie(faits, "2026-03-13");
+    egal(r.serie, 16);
+    pareil(r.jokers, ["2026-02-25", "2026-03-04", "2026-03-11"]);
+    egal(r.jokerDispoCetteSemaine, false);
+  });
+
+  test("une longue série de 100 jours est comptée en entier", function () {
+    var faits = plage(L.ajouterJours("2026-11-16", -99), "2026-11-16");
+    var r = serie(faits, "2026-11-16");
+    egal(faits.length, 100);
+    egal(r.serie, 100);
+    pareil(r.jokers, []);
+  });
+
+  test("la série traverse le changement d’année et le changement d’heure", function () {
+    egal(serie(["2025-12-30", "2025-12-31", "2026-01-01", "2026-01-02"], "2026-01-02").serie, 4, "nouvel an");
+    egal(serie(plage("2026-03-27", "2026-03-31"), "2026-03-31").serie, 5, "heure d’été");
+    egal(serie(plage("2026-10-23", "2026-10-27"), "2026-10-27").serie, 5, "heure d’hiver");
+  });
+
+  test("les jours futurs ne changent rien à la série d’aujourd’hui", function () {
+    var r = serie(["2026-03-12", "2026-03-13", "2026-03-14", "2026-03-20"], "2026-03-13");
+    egal(r.serie, 2);
+    egal(r.faitAujourdHui, true);
+  });
+
+  test("jours futurs ignorés : série, jokers, historique et meilleure série s’arrêtent à aujourd’hui", function () {
+    var passes = ["2026-03-09", "2026-03-11"];
+    var futurs = ["2026-03-13", "2026-03-14", "2026-03-15", "2026-03-16", "2026-03-18", "2026-04-02"];
+    var j = jours(passes.concat(futurs));
+    pareil(L.calculerSerie(j, "2026-03-11"), serie(passes, "2026-03-11"));
+    pareil(L.calculerSerie(j, "2026-03-11"),
+      { serie: 2, jokers: ["2026-03-10"], faitAujourdHui: true, jokerDispoCetteSemaine: false });
+    pareil(L.jokersHistorique(j, "2026-03-11"), ["2026-03-10"], "aucun joker posé dans le futur");
+    egal(L.meilleureSerie(j, "2026-03-11"), 2, "avec la clé du jour, les jours futurs ne comptent pas");
+    egal(L.meilleureSerie(j), 5, "sans clé du jour, le parcours va jusqu’au jour fait le plus récent");
+    /* Que des jours futurs : comme si rien n’était fait. */
+    pareil(L.calculerSerie(jours(futurs), "2026-03-11"),
+      { serie: 0, jokers: [], faitAujourdHui: false, jokerDispoCetteSemaine: true });
+    egal(L.meilleureSerie(jours(futurs), "2026-03-11"), 0);
+    pareil(L.jokersHistorique(jours(futurs), "2026-03-11"), []);
+  });
+
+  test("stabilité du joker : un jour couvert le reste, et seul le jour qui vient de finir peut le devenir", function () {
+    var graine, alea, faits, j, i, k, cle, veille, avant, apres, r, total = 0;
+    for (graine = 1; graine <= 8; graine++) {
+      alea = L.mulberry32(graine * 15485863);
+      faits = [];
+      for (i = 0; i < 120; i++) {
+        if (alea() < 0.55 + 0.04 * graine) {
+          faits.push(L.ajouterJours("2025-12-01", i));
+        }
+      }
+      j = jours(faits);
+      avant = [];
+      for (i = -2; i < 125; i++) {
+        cle = L.ajouterJours("2025-12-01", i);
+        veille = L.ajouterJours(cle, -1);
+        apres = L.jokersHistorique(j, cle);
+        /* L’historique de la veille est un préfixe de celui d’aujourd’hui… */
+        pareil(apres.slice(0, avant.length), avant, "graine " + graine + ", un joker a changé de jour vu du " + cle);
+        /* … qui ne peut contenir en plus que la veille, tout juste terminée. */
+        verifier(apres.length === avant.length || (apres.length === avant.length + 1 && apres[apres.length - 1] === veille),
+          "graine " + graine + ", joker posé après coup vu du " + cle + " : " + stable(apres));
+        r = L.calculerSerie(j, cle);
+        for (k = 0; k < r.jokers.length; k++) {
+          verifier(apres.indexOf(r.jokers[k]) !== -1, "joker de la série absent de l’historique : " + r.jokers[k]);
+        }
+        for (k = 0; k < apres.length; k++) {
+          verifier(!Object.prototype.hasOwnProperty.call(j, apres[k]), "jour fait marqué comme joker : " + apres[k]);
+          verifier(apres[k] < cle, "aujourd’hui ou un jour futur couvert par un joker : " + apres[k]);
+          verifier(k === 0 || L.cleLundi(apres[k]) !== L.cleLundi(apres[k - 1]), "deux jokers la même semaine : " + apres[k]);
+        }
+        avant = apres;
+      }
+      total += avant.length;
+    }
+    verifier(total > 40, "trop peu de jokers pour que le test soit utile : " + total);
+  });
+
+  test("coût linéaire : 10 ans de données trouées, sans délai notable", function () {
+    var alea = L.mulberry32(20261116);
+    var liste = [];
+    var j, i, debut, duree, r, attendu;
+    for (i = 0; i < 3653; i++) {
+      if (alea() < 0.8) {
+        liste.push(L.ajouterJours("2016-11-16", i));
+      }
+    }
+    j = jours(liste);
+    debut = Date.now();
+    for (i = 0; i < 20; i++) {
+      r = L.calculerSerie(j, "2026-11-16");
+      L.jokersHistorique(j, "2026-11-16");
+      L.meilleureSerie(j, "2026-11-16");
+    }
+    duree = Date.now() - debut;
+    verifier(liste.length > 2500, "jeu de données trop petit : " + liste.length);
+    verifier(duree < 3000, "60 calculs sur 10 ans ont pris " + duree + " ms");
+    verifier(L.meilleureSerie(j, "2026-11-16") >= r.serie, "meilleure série inférieure à la série en cours");
+    /* Deux dessins séparés par dix-neuf siècles : le trou ne coûte rien. */
+    debut = Date.now();
+    attendu = { serie: 2, jokers: [], faitAujourdHui: true, jokerDispoCetteSemaine: true };
+    for (i = 0; i < 20; i++) {
+      pareil(L.calculerSerie({ "0100-01-01": true, "2026-11-15": true, "2026-11-16": true }, "2026-11-16"), attendu);
+    }
+    duree = Date.now() - debut;
+    verifier(duree < 1000, "20 calculs avec un très long trou ont pris " + duree + " ms");
+    pareil(L.jokersHistorique({ "0100-01-01": true, "2026-11-16": true }, "2026-11-16"), ["0100-01-02"]);
+  });
+
+  test("calculerSerie, jokersHistorique et meilleureSerie ne modifient pas l’objet jours", function () {
+    var j = jours(["2026-03-09", "2026-03-10", "2026-03-12", "2026-03-13"]);
+    var avant = stable(j);
+    L.calculerSerie(j, "2026-03-13");
+    L.jokersHistorique(j, "2026-03-13");
+    L.meilleureSerie(j);
+    L.meilleureSerie(j, "2026-03-13");
+    egal(stable(j), avant);
+  });
+
+  test("calculerSerie accepte des jours valant simplement true, et ignore les propriétés héritées", function () {
+    var herite = Object.create({ "2026-03-10": true });
+    herite["2026-03-11"] = true;
+    egal(L.calculerSerie({ "2026-03-10": true, "2026-03-11": true }, "2026-03-11").serie, 2);
+    egal(L.calculerSerie(herite, "2026-03-11").serie, 1, "seule la propriété propre compte");
+  });
+
+  test("arguments invalides : résultat neutre, sans exception", function () {
+    var neutre = { serie: 0, jokers: [], faitAujourdHui: false, jokerDispoCetteSemaine: true };
+    pareil(L.calculerSerie(jours(["2026-03-11"]), "pas une date"), neutre);
+    pareil(L.calculerSerie(null, "2026-03-11"), neutre);
+    pareil(L.calculerSerie(undefined, "2026-03-11"), neutre);
+  });
+
+  test("calculerSerie, jokersHistorique et meilleureSerie suivent une version de référence écrite avec des clés", function () {
+    /* Version naïve, au plus près de la règle : on avance de clé en clé, du
+       plus ancien jour fait jusqu’à aujourd’hui. */
+    function reference(j, aujourdHui) {
+      var fait = Object.prototype.hasOwnProperty.call(j, aujourdHui);
+      var resultat = { serie: 0, jokers: [], faitAujourdHui: fait, jokerDispoCetteSemaine: true };
+      var historiqueRef = [];
+      var meilleure = 0;
+      var prises = {};       /* lundis des semaines dont le joker est consommé */
+      var vivante = false;
+      var cles = Object.keys(j).sort();
+      var courant = cles.length > 0 ? cles[0] : null;
+      var garde = 0;
+      var lundi;
+      while (courant !== null && courant <= aujourdHui && garde < 2000) {
+        garde++;
+        if (Object.prototype.hasOwnProperty.call(j, courant)) {
+          vivante = true;
+          resultat.serie++;
+          meilleure = Math.max(meilleure, resultat.serie);
+        } else if (vivante && courant < aujourdHui) {
+          lundi = L.cleLundi(courant);
+          if (prises[lundi] === true) {
+            vivante = false;
+            resultat.serie = 0;
+            resultat.jokers = [];
+          } else {
+            prises[lundi] = true;
+            resultat.jokers.push(courant);
+            historiqueRef.push(courant);
+          }
+        }
+        courant = L.ajouterJours(courant, 1);
+      }
+      resultat.jokerDispoCetteSemaine = prises[L.cleLundi(aujourdHui)] !== true;
+      return { serie: resultat, historique: historiqueRef, meilleure: meilleure };
+    }
+    var graine, alea, faits, j, i, cle, ref, contexte, avecJoker = 0, rompues = 0;
+    for (graine = 1; graine <= 8; graine++) {
+      alea = L.mulberry32(graine * 104729);
+      faits = [];
+      for (i = 0; i < 110; i++) {
+        if (alea() < 0.6 + 0.04 * graine) {
+          faits.push(L.ajouterJours("2025-12-01", i));
+        }
+      }
+      j = jours(faits);
+      for (i = -3; i < 115; i++) {
+        cle = L.ajouterJours("2025-12-01", i);
+        ref = reference(j, cle);
+        contexte = "graine " + graine + ", aujourd’hui = " + cle;
+        pareil(L.calculerSerie(j, cle), ref.serie, contexte);
+        pareil(L.jokersHistorique(j, cle), ref.historique, "historique, " + contexte);
+        egal(L.meilleureSerie(j, cle), ref.meilleure, "meilleure série, " + contexte);
+        if (ref.serie.jokers.length > 0) {
+          avecJoker++;
+        }
+        if (ref.serie.serie === 0 && ref.meilleure > 0) {
+          rompues++;
+        }
+      }
+    }
+    verifier(avecJoker > 50, "trop peu de cas avec joker pour que la comparaison soit utile : " + avecJoker);
+    verifier(rompues > 5, "trop peu de séries rompues pour que la comparaison soit utile : " + rompues);
+  });
+
+  /* ================================================================== */
+  groupe("Meilleure série et totaux");
+  /* ================================================================== */
+
+  test("meilleureSerie vaut 0 sans aucun jour", function () {
+    egal(L.meilleureSerie({}), 0);
+    egal(L.meilleureSerie(null), 0);
+  });
+
+  test("meilleureSerie retient la plus longue série passée, pas la série en cours", function () {
+    var faits = plage("2026-01-05", "2026-01-09").concat(["2026-03-10", "2026-03-11"]);
+    egal(L.meilleureSerie(jours(faits)), 5);
+    egal(serie(faits, "2026-03-11").serie, 2, "série en cours");
+  });
+
+  test("meilleureSerie tient compte des jokers", function () {
+    egal(L.meilleureSerie(jours(["2026-03-09", "2026-03-10", "2026-03-12", "2026-03-13"])), 4);
+    egal(L.meilleureSerie(jours(["2026-03-09", "2026-03-12", "2026-03-13"])), 2);
+    egal(L.meilleureSerie(jours(["2026-03-13"])), 1);
+  });
+
+  test("meilleureSerie = maximum de calculerSerie sur chaque jour fait (motifs pseudo-aléatoires)", function () {
+    var graine, alea, faits, j, i, attendu, s;
+    for (graine = 1; graine <= 12; graine++) {
+      alea = L.mulberry32(graine * 7919);
+      faits = [];
+      for (i = 0; i < 150; i++) {
+        if (alea() < 0.78) {
+          faits.push(L.ajouterJours("2026-01-01", i));
+        }
+      }
+      j = jours(faits);
+      attendu = 0;
+      for (i = 0; i < faits.length; i++) {
+        s = L.calculerSerie(j, faits[i]).serie;
+        if (s > attendu) {
+          attendu = s;
+        }
+      }
+      egal(L.meilleureSerie(j), attendu, "graine " + graine);
+      verifier(attendu >= 1, "motif vide");
+    }
+  });
+
+  test("meilleureSerie(jours, aujourd’hui) reste cohérente avec calculerSerie à chaque date", function () {
+    var graine, alea, faits, j, i, cle, attendu, s, m;
+    for (graine = 1; graine <= 6; graine++) {
+      alea = L.mulberry32(graine * 6007);
+      faits = [];
+      for (i = 0; i < 100; i++) {
+        if (alea() < 0.7) {
+          faits.push(L.ajouterJours("2026-01-01", i));
+        }
+      }
+      j = jours(faits);
+      attendu = 0; /* plus grande série vue jusqu’ici, en avançant d’un jour à la fois */
+      for (i = -2; i < 105; i++) {
+        cle = L.ajouterJours("2026-01-01", i);
+        s = L.calculerSerie(j, cle).serie;
+        if (s > attendu) {
+          attendu = s;
+        }
+        m = L.meilleureSerie(j, cle);
+        verifier(m >= s, "graine " + graine + ", " + cle + " : meilleure série " + m + " inférieure à la série en cours " + s);
+        egal(m, attendu, "graine " + graine + ", aujourd’hui = " + cle);
+      }
+      egal(L.meilleureSerie(j, L.ajouterJours("2026-01-01", 400)), L.meilleureSerie(j), "graine " + graine + ", bien après le dernier dessin");
+    }
+  });
+
+  test("meilleureSerie : clé du jour facultative, une clé invalide est ignorée", function () {
+    var j = jours(["2026-03-09", "2026-03-10", "2026-03-12", "2026-03-13", "2026-03-20"]);
+    egal(L.meilleureSerie(j), 4);
+    egal(L.meilleureSerie(j, undefined), 4);
+    egal(L.meilleureSerie(j, "pas une date"), 4);
+    egal(L.meilleureSerie(j, "2026-03-10"), 2);
+    egal(L.meilleureSerie(j, "2026-03-01"), 0);
+    egal(L.meilleureSerie(null, "2026-03-13"), 0);
+  });
+
+  test("jokersHistorique : arguments invalides, tableau vide", function () {
+    pareil(L.jokersHistorique(null, "2026-03-13"), []);
+    pareil(L.jokersHistorique(jours(["2026-03-09", "2026-03-11"]), "pas une date"), []);
+    pareil(L.jokersHistorique(jours(["2026-03-09", "2026-03-11"])), []);
+    pareil(L.jokersHistorique({}, "2026-03-13"), []);
+  });
+
+  test("totalJours compte les jours faits", function () {
+    egal(L.totalJours({}), 0);
+    egal(L.totalJours(jours(["2026-03-09", "2026-03-10", "2026-05-01"])), 3);
+    egal(L.totalJours(null), 0);
+  });
+
+  test("compterMois compte les jours faits du mois demandé seulement", function () {
+    var j = jours(["2026-01-31", "2026-02-01", "2026-02-14", "2026-02-28", "2026-03-01", "2025-02-10", "2028-02-29"]);
+    egal(L.compterMois(j, 2026, 2), 3);
+    egal(L.compterMois(j, 2026, 1), 1);
+    egal(L.compterMois(j, 2026, 3), 1);
+    egal(L.compterMois(j, 2025, 2), 1);
+    egal(L.compterMois(j, 2028, 2), 1);
+    egal(L.compterMois(j, 2026, 4), 0);
+    egal(L.compterMois(j, 2026, 13), 0);
+  });
+
+  /* ================================================================== */
+  groupe("Paliers");
+  /* ================================================================== */
+
+  test("PALIERS contient les 9 seuils prévus, dans l’ordre", function () {
+    pareil(seuils(L.PALIERS), [1, 3, 7, 14, 30, 50, 100, 200, 365]);
+  });
+
+  test("chaque palier a un nom court, non vide et unique", function () {
+    var vus = {};
+    var i, nom;
+    for (i = 0; i < L.PALIERS.length; i++) {
+      nom = L.PALIERS[i].nom;
+      verifier(typeof nom === "string" && nom.length >= 3 && nom.length <= 40, "nom inattendu : " + stable(nom));
+      verifier(vus[nom] !== true, "nom en double : " + nom);
+      vus[nom] = true;
+    }
+  });
+
+  test("paliersAtteints suit le total de jours dessinés", function () {
+    pareil(seuils(L.paliersAtteints(0)), []);
+    pareil(seuils(L.paliersAtteints(1)), [1]);
+    pareil(seuils(L.paliersAtteints(2)), [1]);
+    pareil(seuils(L.paliersAtteints(6)), [1, 3]);
+    pareil(seuils(L.paliersAtteints(7)), [1, 3, 7]);
+    pareil(seuils(L.paliersAtteints(364)), [1, 3, 7, 14, 30, 50, 100, 200]);
+    pareil(seuils(L.paliersAtteints(365)), [1, 3, 7, 14, 30, 50, 100, 200, 365]);
+    pareil(seuils(L.paliersAtteints(5000)), [1, 3, 7, 14, 30, 50, 100, 200, 365]);
+  });
+
+  test("prochainPalier donne le palier suivant, ou null quand tout est atteint", function () {
+    egal(L.prochainPalier(0).seuil, 1);
+    egal(L.prochainPalier(1).seuil, 3);
+    egal(L.prochainPalier(3).seuil, 7);
+    egal(L.prochainPalier(29).seuil, 30);
+    egal(L.prochainPalier(364).seuil, 365);
+    egal(L.prochainPalier(365), null);
+    egal(L.prochainPalier(1000), null);
+    verifier(typeof L.prochainPalier(0).nom === "string" && L.prochainPalier(0).nom !== "", "nom manquant");
+  });
+
+  test("paliersAtteints et prochainPalier renvoient des copies", function () {
+    var a = L.paliersAtteints(10);
+    var p = L.prochainPalier(0);
+    a[0].nom = "Modifié";
+    a.pop();
+    p.seuil = 999;
+    egal(seuils(L.paliersAtteints(10)).length, 3);
+    verifier(L.paliersAtteints(10)[0].nom !== "Modifié", "PALIERS a été modifié");
+    egal(L.prochainPalier(0).seuil, 1);
+  });
+
+  test("paliersNonVus liste les paliers atteints pas encore fêtés", function () {
+    var etat = L.etatInitial();
+    etat.jours = jours(plage("2026-03-01", "2026-03-08"));
+    pareil(seuils(L.paliersNonVus(etat)), [1, 3, 7]);
+    etat.paliersVus = [1, 3];
+    pareil(seuils(L.paliersNonVus(etat)), [7]);
+    etat.paliersVus = [1, 3, 7];
+    pareil(seuils(L.paliersNonVus(etat)), []);
+    pareil(seuils(L.paliersNonVus(L.etatInitial())), []);
+  });
+
+  /* ================================================================== */
+  groupe("État : valeurs initiales et validation");
+  /* ================================================================== */
+
+  test("CLE_STOCKAGE vaut « dessin-du-jour:v1 »", function () {
+    egal(L.CLE_STOCKAGE, "dessin-du-jour:v1");
+  });
+
+  test("etatInitial a exactement la forme prévue", function () {
+    pareil(L.etatInitial(), {
+      version: 1,
+      jours: {},
+      tirage: { date: null, n: 0 },
+      reglages: { duree: "auto", theme: "auto", son: true },
+      paliersVus: []
+    });
+  });
+
+  test("etatInitial renvoie chaque fois un objet indépendant", function () {
+    var a = L.etatInitial();
+    var b = L.etatInitial();
+    a.jours["2026-03-09"] = {};
+    a.reglages.duree = 30;
+    a.paliersVus.push(1);
+    verifier(a !== b);
+    pareil(b, L.etatInitial());
+  });
+
+  test("validerEtat accepte un état valide et le rend à l’identique", function () {
+    var etat = {
+      version: 1,
+      jours: {
+        "2026-03-09": { exerciceId: "lun-03", titre: "Des lignes droites", themeNom: "Lignes et échauffement",
+          duree: 20, ressenti: "bien", faitLe: "2026-03-09T18:30:00.000Z" },
+        "2026-03-14": { exerciceId: "gen-4-12", titre: "Un phare en pleine tempête", themeNom: "Imagination",
+          duree: 30, ressenti: null, faitLe: "2026-03-14T09:05:10.123Z" }
+      },
+      tirage: { date: "2026-03-14", n: 2 },
+      reglages: { duree: 30, theme: "sombre", son: false },
+      paliersVus: [1, 3]
+    };
+    var r = L.validerEtat(etat);
+    egal(r.ok, true);
+    pareil(r.etat, etat);
+    verifier(r.etat !== etat && r.etat.jours !== etat.jours, "l’état rendu doit être un nouvel objet");
+  });
+
+  test("validerEtat accepte l’état initial", function () {
+    var r = L.validerEtat(L.etatInitial());
+    egal(r.ok, true);
+    pareil(r.etat, L.etatInitial());
+  });
+
+  test("validerEtat refuse null avec un message en français", function () {
+    var r = L.validerEtat(null);
+    egal(r.ok, false);
+    verifier(typeof r.erreur === "string" && r.erreur.length > 10, "message d’erreur manquant");
+    egal(r.etat, undefined);
+  });
+
+  test("validerEtat refuse un tableau", function () {
+    egal(L.validerEtat([]).ok, false);
+    egal(L.validerEtat([{ version: 1, jours: {} }]).ok, false);
+    verifier(typeof L.validerEtat([]).erreur === "string");
+  });
+
+  test("validerEtat refuse les valeurs qui ne sont pas des objets", function () {
+    var valeurs = [undefined, "sauvegarde", 42, true, function () {}];
+    var i, r;
+    for (i = 0; i < valeurs.length; i++) {
+      r = L.validerEtat(valeurs[i]);
+      egal(r.ok, false, "valeur n° " + i);
+      verifier(typeof r.erreur === "string" && r.erreur !== "", "message manquant pour la valeur n° " + i);
+    }
+  });
+
+  test("validerEtat refuse un objet qui ne ressemble pas à une sauvegarde", function () {
+    egal(L.validerEtat({}).ok, false, "objet vide");
+    egal(L.validerEtat({ nom: "autre chose", valeurs: [1, 2, 3] }).ok, false, "objet quelconque");
+    egal(L.validerEtat({ version: 2, jours: {} }).ok, false, "version future");
+    egal(L.validerEtat({ version: "1", jours: {} }).ok, false, "version en chaîne");
+    egal(L.validerEtat({ version: 1, jours: [] }).ok, false, "jours en tableau");
+    egal(L.validerEtat({ version: 1, jours: "beaucoup" }).ok, false, "jours en chaîne");
+    egal(L.validerEtat({ version: 1, jours: null }).ok, false, "jours null");
+  });
+
+  test("champs manquants : remplacés par les valeurs par défaut", function () {
+    var r = L.validerEtat({ version: 1 });
+    egal(r.ok, true);
+    pareil(r.etat, L.etatInitial());
+    r = L.validerEtat({ jours: { "2026-03-09": {} } });
+    egal(r.ok, true, "sans version mais avec jours");
+    egal(r.etat.version, 1);
+    pareil(r.etat.tirage, { date: null, n: 0 });
+    pareil(r.etat.reglages, { duree: "auto", theme: "auto", son: true });
+    pareil(r.etat.paliersVus, []);
+  });
+
+  test("fiche de jour incomplète : complétée avec des valeurs neutres", function () {
+    var r = L.validerEtat({ version: 1, jours: { "2026-03-09": {}, "2026-03-10": { titre: "Juste un titre" }, "2026-03-11": true } });
+    var vide = { exerciceId: "", titre: "", themeNom: "", duree: 0, ressenti: null, faitLe: "" };
+    egal(r.ok, true);
+    pareil(r.etat.jours["2026-03-09"], vide);
+    pareil(r.etat.jours["2026-03-10"], { exerciceId: "", titre: "Juste un titre", themeNom: "", duree: 0, ressenti: null, faitLe: "" });
+    pareil(r.etat.jours["2026-03-11"], vide);
+    egal(L.totalJours(r.etat.jours), 3);
+  });
+
+  test("clés de jours invalides ou dans un format inattendu : écartées", function () {
+    var source = { version: 1, jours: {} };
+    var mauvaises = ["2026-02-30", "2026-3-1", "20260301", "2026/03/01", "abc", "", " 2026-03-01", "2026-03-01T10:00",
+      "constructor", "toString", "0", "2026-13-01"];
+    var i, r;
+    for (i = 0; i < mauvaises.length; i++) {
+      source.jours[mauvaises[i]] = { titre: "à écarter" };
+    }
+    source.jours["2026-03-09"] = { titre: "à garder" };
+    source.jours["2028-02-29"] = { titre: "à garder aussi" };
+    r = L.validerEtat(source);
+    egal(r.ok, true);
+    pareil(Object.keys(r.etat.jours).sort(), ["2026-03-09", "2028-02-29"]);
+  });
+
+  test("jours dont la valeur n’est pas une fiche : écartés", function () {
+    var r = L.validerEtat({ version: 1, jours: {
+      "2026-03-09": null, "2026-03-10": "fait", "2026-03-11": 1, "2026-03-12": [], "2026-03-13": false,
+      "2026-03-14": { titre: "ok" }
+    } });
+    egal(r.ok, true);
+    pareil(Object.keys(r.etat.jours), ["2026-03-14"]);
+  });
+
+  test("pollution de prototype : __proto__ et constructor ne passent pas", function () {
+    var texte = "{\"version\":1," +
+      "\"__proto__\":{\"pollue\":true}," +
+      "\"constructor\":{\"prototype\":{\"pollue\":true}}," +
+      "\"jours\":{\"__proto__\":{\"pollue\":true},\"constructor\":{\"pollue\":true}," +
+      "\"2026-03-09\":{\"__proto__\":{\"pollue\":true},\"titre\":\"ok\",\"constructor\":\"x\"}}," +
+      "\"reglages\":{\"__proto__\":{\"duree\":30,\"pollue\":true}}," +
+      "\"tirage\":{\"__proto__\":{\"date\":\"2026-03-09\",\"n\":2}}}";
+    var r = L.validerEtat(JSON.parse(texte));
+    var temoin = {};
+    egal(r.ok, true);
+    egal(temoin.pollue, undefined, "Object.prototype a été pollué");
+    egal(Object.prototype.pollue, undefined, "Object.prototype a été pollué");
+    egal(r.etat.pollue, undefined);
+    egal(r.etat.jours.pollue, undefined);
+    egal(r.etat.jours["2026-03-09"].pollue, undefined);
+    egal(r.etat.reglages.pollue, undefined);
+    pareil(Object.keys(r.etat).sort(), ["jours", "paliersVus", "reglages", "tirage", "version"]);
+    pareil(Object.keys(r.etat.jours), ["2026-03-09"]);
+    pareil(Object.keys(r.etat.jours["2026-03-09"]).sort(), ["duree", "exerciceId", "faitLe", "ressenti", "themeNom", "titre"]);
+    egal(r.etat.jours["2026-03-09"].titre, "ok");
+    verifier(Object.getPrototypeOf(r.etat) === Object.prototype, "prototype de l’état inattendu");
+    verifier(Object.getPrototypeOf(r.etat.jours) === Object.prototype, "prototype de jours inattendu");
+    verifier(Object.getPrototypeOf(r.etat.jours["2026-03-09"]) === Object.prototype, "prototype d’une fiche inattendu");
+  });
+
+  test("les valeurs héritées d’un prototype ne sont pas lues", function () {
+    var source = Object.create({ version: 1, jours: { "2026-03-09": {} } });
+    var reglages = Object.create({ duree: 30, theme: "sombre", son: false });
+    egal(L.validerEtat(source).ok, false, "version et jours hérités ne comptent pas");
+    pareil(L.validerEtat({ version: 1, reglages: reglages }).etat.reglages, { duree: "auto", theme: "auto", son: true });
+  });
+
+  test("aucune propriété inconnue n’est recopiée", function () {
+    var r = L.validerEtat({
+      version: 1, secret: "x", jours: { "2026-03-09": { titre: "ok", note: "inconnue", dessin: "data:image/png;base64,AAAA" } },
+      reglages: { duree: 15, langue: "en" }, tirage: { date: "2026-03-09", n: 1, extra: true }
+    });
+    egal(r.ok, true);
+    pareil(Object.keys(r.etat).sort(), ["jours", "paliersVus", "reglages", "tirage", "version"]);
+    pareil(Object.keys(r.etat.jours["2026-03-09"]).sort(), ["duree", "exerciceId", "faitLe", "ressenti", "themeNom", "titre"]);
+    pareil(r.etat.reglages, { duree: 15, theme: "auto", son: true });
+    pareil(r.etat.tirage, { date: "2026-03-09", n: 1 });
+  });
+
+  test("chaînes trop longues : tronquées à une longueur raisonnable", function () {
+    var longue = new Array(5001).join("a");
+    var r = L.validerEtat({ version: 1, jours: { "2026-03-09": { titre: longue, themeNom: longue, exerciceId: longue, faitLe: longue } } });
+    var jour = r.etat.jours["2026-03-09"];
+    egal(r.ok, true);
+    verifier(jour.titre.length > 0 && jour.titre.length <= 200, "titre : " + jour.titre.length + " caractères");
+    verifier(jour.themeNom.length > 0 && jour.themeNom.length <= 200, "themeNom : " + jour.themeNom.length + " caractères");
+    egal(jour.exerciceId, "", "un id démesuré est écarté");
+    egal(jour.faitLe, "", "un horodatage démesuré est écarté");
+  });
+
+  test("types vérifiés dans une fiche de jour", function () {
+    var r = L.validerEtat({ version: 1, jours: {
+      "2026-03-09": { exerciceId: 12, titre: 34, themeNom: {}, duree: "20", ressenti: "génial", faitLe: 1773000000000 },
+      "2026-03-10": { exerciceId: "pas un id !", duree: -5, ressenti: "facile", faitLe: "hier soir" },
+      "2026-03-11": { exerciceId: "mar-07", duree: 1e9, ressenti: "difficile", faitLe: "2026-03-11T08:00:00.000Z" },
+      "2026-03-12": { duree: 22.4, ressenti: null },
+      "2026-03-13": { duree: NaN, ressenti: "bien" }
+    } });
+    var j = r.etat.jours;
+    egal(r.ok, true);
+    pareil(j["2026-03-09"], { exerciceId: "", titre: "", themeNom: "", duree: 0, ressenti: null, faitLe: "" });
+    pareil(j["2026-03-10"], { exerciceId: "", titre: "", themeNom: "", duree: 0, ressenti: "facile", faitLe: "" });
+    pareil(j["2026-03-11"], { exerciceId: "mar-07", titre: "", themeNom: "", duree: 600, ressenti: "difficile", faitLe: "2026-03-11T08:00:00.000Z" });
+    egal(j["2026-03-12"].duree, 22);
+    egal(j["2026-03-13"].duree, 0);
+    egal(j["2026-03-13"].ressenti, "bien");
+  });
+
+  test("réglages invalides : ramenés aux valeurs par défaut", function () {
+    pareil(L.validerEtat({ version: 1, reglages: { duree: 25, theme: "rose", son: "oui" } }).etat.reglages,
+      { duree: "auto", theme: "auto", son: true });
+    pareil(L.validerEtat({ version: 1, reglages: { duree: "30", theme: "clair", son: false } }).etat.reglages,
+      { duree: "auto", theme: "clair", son: false });
+    pareil(L.validerEtat({ version: 1, reglages: "aucun" }).etat.reglages, { duree: "auto", theme: "auto", son: true });
+    pareil(L.validerEtat({ version: 1, reglages: { duree: 15, theme: "sombre", son: true } }).etat.reglages,
+      { duree: 15, theme: "sombre", son: true });
+  });
+
+  test("réglage de durée : « auto », 15, 20 et 30 sont acceptés, tout le reste devient « auto »", function () {
+    var acceptees = ["auto", 15, 20, 30];
+    var refusees = [0, 10, 25, 45, -15, 15.5, "15", "20", "Auto", "", null, true, [20], { valeur: 20 }, NaN];
+    var i;
+    egal(L.DUREE_AUTO, "auto");
+    pareil(L.DUREES, [15, 20, 30]);
+    egal(L.etatInitial().reglages.duree, "auto", "choix par défaut");
+    for (i = 0; i < acceptees.length; i++) {
+      egal(L.validerEtat({ version: 1, reglages: { duree: acceptees[i] } }).etat.reglages.duree, acceptees[i],
+        "valeur acceptée n° " + i);
+    }
+    for (i = 0; i < refusees.length; i++) {
+      egal(L.validerEtat({ version: 1, reglages: { duree: refusees[i] } }).etat.reglages.duree, "auto",
+        "valeur refusée n° " + i + " (" + stable(refusees[i]) + ")");
+    }
+    egal(L.validerEtat({ version: 1, reglages: {} }).etat.reglages.duree, "auto", "durée absente");
+    egal(L.depuisJSON(L.versJSON(L.modifierReglages(L.etatInitial(), { duree: "auto" }))).etat.reglages.duree, "auto",
+      "« auto » survit à l’aller-retour JSON");
+    egal(L.depuisJSON(L.versJSON(L.modifierReglages(L.etatInitial(), { duree: 30 }))).etat.reglages.duree, 30,
+      "30 survit à l’aller-retour JSON");
+  });
+
+  test("tirage invalide : remis à zéro ou plafonné", function () {
+    pareil(L.validerEtat({ version: 1, tirage: { date: "hier", n: 2 } }).etat.tirage, { date: null, n: 0 });
+    pareil(L.validerEtat({ version: 1, tirage: { date: "2026-03-09", n: 99 } }).etat.tirage, { date: "2026-03-09", n: 2 });
+    pareil(L.validerEtat({ version: 1, tirage: { date: "2026-03-09", n: -4 } }).etat.tirage, { date: "2026-03-09", n: 0 });
+    pareil(L.validerEtat({ version: 1, tirage: { date: "2026-03-09", n: "2" } }).etat.tirage, { date: "2026-03-09", n: 0 });
+    pareil(L.validerEtat({ version: 1, tirage: [1, 2] }).etat.tirage, { date: null, n: 0 });
+    pareil(L.validerEtat({ version: 1, tirage: null }).etat.tirage, { date: null, n: 0 });
+  });
+
+  test("paliersVus : seuls les vrais seuils sont gardés, sans doublon, triés", function () {
+    pareil(L.validerEtat({ version: 1, paliersVus: [7, 3, 3, "14", 8, 1, null, 365, 1] }).etat.paliersVus, [1, 3, 7, 365]);
+    pareil(L.validerEtat({ version: 1, paliersVus: "tous" }).etat.paliersVus, []);
+    pareil(L.validerEtat({ version: 1, paliersVus: { 0: 1 } }).etat.paliersVus, []);
+  });
+
+  test("validerEtat ne modifie pas l’objet reçu et ne partage rien avec lui", function () {
+    var source = {
+      version: 1, inconnu: 1,
+      jours: { "2026-03-09": { titre: "ok", duree: 20 }, "mauvaise clé": {} },
+      tirage: { date: "2026-03-09", n: 1 }, reglages: { duree: 30, theme: "clair", son: false }, paliersVus: [1]
+    };
+    var avant = stable(source);
+    var r = L.validerEtat(source);
+    r.etat.jours["2026-03-09"].titre = "changé";
+    r.etat.jours["2026-04-01"] = {};
+    r.etat.reglages.duree = 15;
+    r.etat.tirage.n = 2;
+    r.etat.paliersVus.push(3);
+    egal(stable(source), avant);
+  });
+
+  test("depuisJSON lit un texte de sauvegarde et refuse le texte illisible", function () {
+    var texte = L.versJSON(L.marquerFait(L.etatInitial(), "2026-03-09", { titre: "Des lignes", duree: 20 }));
+    var r = L.depuisJSON(texte);
+    egal(r.ok, true);
+    egal(r.etat.jours["2026-03-09"].titre, "Des lignes");
+    egal(L.depuisJSON("{ pas du json").ok, false);
+    egal(L.depuisJSON("").ok, false);
+    egal(L.depuisJSON("null").ok, false);
+    egal(L.depuisJSON("[1,2,3]").ok, false);
+    egal(L.depuisJSON(42).ok, false);
+    verifier(typeof L.depuisJSON("{ pas du json").erreur === "string", "message manquant");
+  });
+
+  test("versJSON puis depuisJSON redonne le même état (compact ou lisible)", function () {
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09",
+      { exerciceId: "lun-01", titre: "Des lignes « droites »", themeNom: "Lignes et échauffement", duree: 20, ressenti: "bien", faitLe: "2026-03-09T18:00:00.000Z" });
+    etat = L.changerExercice(etat, "2026-03-10");
+    pareil(L.depuisJSON(L.versJSON(etat)).etat, etat);
+    pareil(L.depuisJSON(L.versJSON(etat, true)).etat, etat);
+    verifier(L.versJSON(etat, true).indexOf("\n") !== -1, "la version lisible devrait être indentée");
+  });
+
+  /* ================================================================== */
+  groupe("État : marquer, annuler, changer d’exercice");
+  /* ================================================================== */
+
+  test("marquerFait ajoute le jour avec ses informations", function () {
+    var infos = { exerciceId: "lun-02", titre: "Des cercles", themeNom: "Lignes et échauffement", duree: 15, ressenti: "facile", faitLe: "2026-03-09T07:45:00.000Z" };
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09", infos);
+    pareil(etat.jours["2026-03-09"], infos);
+    egal(L.totalJours(etat.jours), 1);
+    egal(L.calculerSerie(etat.jours, "2026-03-09").serie, 1);
+  });
+
+  test("marquerFait renvoie un nouvel état sans modifier l’ancien", function () {
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09", { titre: "Premier" });
+    var avant = stable(etat);
+    var suivant = L.marquerFait(etat, "2026-03-10", { titre: "Second" });
+    egal(stable(etat), avant, "l’ancien état a été modifié");
+    verifier(suivant !== etat && suivant.jours !== etat.jours, "le nouvel état partage des objets avec l’ancien");
+    verifier(suivant.jours["2026-03-09"] !== etat.jours["2026-03-09"], "les fiches de jour sont partagées");
+    egal(L.totalJours(suivant.jours), 2);
+    egal(L.totalJours(etat.jours), 1);
+  });
+
+  test("marquerFait ne garde pas de référence vers l’objet infos", function () {
+    var infos = { titre: "Avant", duree: 20 };
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09", infos);
+    infos.titre = "Après";
+    egal(etat.jours["2026-03-09"].titre, "Avant");
+  });
+
+  test("marquerFait nettoie les informations reçues", function () {
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09", { titre: 12, duree: "longtemps", ressenti: "bof", inconnu: true, faitLe: "plus tard" });
+    pareil(etat.jours["2026-03-09"], { exerciceId: "", titre: "", themeNom: "", duree: 0, ressenti: null, faitLe: "" });
+    etat = L.marquerFait(L.etatInitial(), "2026-03-09");
+    pareil(etat.jours["2026-03-09"], { exerciceId: "", titre: "", themeNom: "", duree: 0, ressenti: null, faitLe: "" });
+  });
+
+  test("marquerFait sur un jour déjà fait complète la fiche (ajout du ressenti)", function () {
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09", { exerciceId: "lun-02", titre: "Des cercles", duree: 20, faitLe: "2026-03-09T07:45:00.000Z" });
+    var apres = L.marquerFait(etat, "2026-03-09", { ressenti: "difficile" });
+    pareil(apres.jours["2026-03-09"], { exerciceId: "lun-02", titre: "Des cercles", themeNom: "", duree: 20, ressenti: "difficile", faitLe: "2026-03-09T07:45:00.000Z" });
+    egal(etat.jours["2026-03-09"].ressenti, null, "l’ancien état a été modifié");
+    egal(L.marquerFait(apres, "2026-03-09", { ressenti: null }).jours["2026-03-09"].ressenti, null, "le ressenti peut être effacé");
+  });
+
+  test("marquerFait avec une clé invalide n’ajoute rien", function () {
+    var etat = L.etatInitial();
+    var apres = L.marquerFait(etat, "2026-02-30", { titre: "x" });
+    pareil(apres, L.etatInitial());
+    verifier(apres !== etat, "un nouvel objet est attendu");
+    pareil(L.marquerFait(etat, "__proto__", { titre: "x" }), L.etatInitial());
+    egal(({}).titre, undefined);
+  });
+
+  test("marquerFait repart d’un état neuf si l’état reçu est illisible", function () {
+    var etat = L.marquerFait(null, "2026-03-09", { titre: "ok" });
+    egal(etat.version, 1);
+    egal(etat.jours["2026-03-09"].titre, "ok");
+    pareil(etat.reglages, { duree: "auto", theme: "auto", son: true });
+  });
+
+  test("annulerFait retire le jour sans modifier l’ancien état", function () {
+    var etat = L.marquerFait(L.marquerFait(L.etatInitial(), "2026-03-09", { titre: "A" }), "2026-03-10", { titre: "B" });
+    var avant = stable(etat);
+    var apres = L.annulerFait(etat, "2026-03-10");
+    egal(stable(etat), avant, "l’ancien état a été modifié");
+    pareil(Object.keys(apres.jours), ["2026-03-09"]);
+    egal(L.totalJours(etat.jours), 2);
+    verifier(apres !== etat && apres.jours !== etat.jours, "objets partagés");
+  });
+
+  test("annulerFait sur un jour non fait renvoie un état équivalent, mais nouveau", function () {
+    var etat = L.marquerFait(L.etatInitial(), "2026-03-09", { titre: "A" });
+    var apres = L.annulerFait(etat, "2026-03-15");
+    pareil(apres, etat);
+    verifier(apres !== etat, "un nouvel objet est attendu");
+    pareil(L.annulerFait(etat, "n’importe quoi"), etat);
+  });
+
+  test("marquerFait puis annulerFait revient à l’état de départ", function () {
+    var depart = L.changerExercice(L.etatInitial(), "2026-03-09");
+    pareil(L.annulerFait(L.marquerFait(depart, "2026-03-09", { titre: "A" }), "2026-03-09"), depart);
+  });
+
+  test("tirageDuJour vaut 0 par défaut et pour un autre jour", function () {
+    var etat = L.etatInitial();
+    egal(L.tirageDuJour(etat, "2026-03-09"), 0);
+    etat.tirage = { date: "2026-03-08", n: 2 };
+    egal(L.tirageDuJour(etat, "2026-03-09"), 0, "tirage d’hier");
+    egal(L.tirageDuJour(etat, "2026-03-08"), 2);
+    egal(L.tirageDuJour(null, "2026-03-09"), 0);
+    egal(L.tirageDuJour({}, "2026-03-09"), 0);
+  });
+
+  test("changerExercice incrémente le tirage du jour, plafonné à MAX_TIRAGES", function () {
+    var e0 = L.etatInitial();
+    var e1 = L.changerExercice(e0, "2026-03-09");
+    var e2 = L.changerExercice(e1, "2026-03-09");
+    var e3 = L.changerExercice(e2, "2026-03-09");
+    pareil(e1.tirage, { date: "2026-03-09", n: 1 });
+    pareil(e2.tirage, { date: "2026-03-09", n: 2 });
+    pareil(e3.tirage, { date: "2026-03-09", n: 2 });
+    egal(L.tirageDuJour(e3, "2026-03-09"), 2);
+    egal(L.tiragesRestants(e0, "2026-03-09"), 2);
+    egal(L.tiragesRestants(e1, "2026-03-09"), 1);
+    egal(L.tiragesRestants(e3, "2026-03-09"), 0);
+  });
+
+  test("changerExercice ne modifie pas l’ancien état", function () {
+    var e0 = L.marquerFait(L.etatInitial(), "2026-03-08", { titre: "A" });
+    var avant = stable(e0);
+    var e1 = L.changerExercice(e0, "2026-03-09");
+    egal(stable(e0), avant);
+    verifier(e1 !== e0 && e1.tirage !== e0.tirage, "objets partagés");
+    egal(L.totalJours(e1.jours), 1, "les jours sont conservés");
+  });
+
+  test("changerExercice repart de 1 le lendemain", function () {
+    var etat = L.changerExercice(L.changerExercice(L.etatInitial(), "2026-03-09"), "2026-03-09");
+    var lendemain = L.changerExercice(etat, "2026-03-10");
+    pareil(lendemain.tirage, { date: "2026-03-10", n: 1 });
+    egal(L.tirageDuJour(lendemain, "2026-03-09"), 0);
+    pareil(L.changerExercice(etat, "pas une date").tirage, { date: "2026-03-09", n: 2 });
+  });
+
+  test("le tirage mémorisé donne bien un autre exercice du jour", function () {
+    var cle = cleDe(150, 2);
+    var etat = L.etatInitial();
+    var a = exo(cle, L.tirageDuJour(etat, cle));
+    var b, c;
+    etat = L.changerExercice(etat, cle);
+    b = exo(cle, L.tirageDuJour(etat, cle));
+    etat = L.changerExercice(etat, cle);
+    c = exo(cle, L.tirageDuJour(etat, cle));
+    verifier(a.id !== b.id && b.id !== c.id && a.id !== c.id, "exercices identiques : " + a.id + ", " + b.id + ", " + c.id);
+  });
+
+  test("modifierReglages change les réglages valides et ignore le reste", function () {
+    var e0 = L.etatInitial();
+    var e1 = L.modifierReglages(e0, { duree: 30, theme: "sombre", son: false });
+    pareil(e1.reglages, { duree: 30, theme: "sombre", son: false });
+    pareil(e0.reglages, { duree: "auto", theme: "auto", son: true }, "l’ancien état a été modifié");
+    pareil(L.modifierReglages(e1, { duree: 45, theme: "fluo", son: "non", autre: 1 }).reglages, { duree: 30, theme: "sombre", son: false });
+    pareil(L.modifierReglages(e1, { theme: "clair" }).reglages, { duree: 30, theme: "clair", son: false });
+    pareil(L.modifierReglages(e1, null).reglages, { duree: 30, theme: "sombre", son: false });
+  });
+
+  test("modifierReglages : la durée passe de « auto » à une durée fixe et inversement", function () {
+    var e0 = L.etatInitial();
+    var e15 = L.modifierReglages(e0, { duree: 15 });
+    var e20 = L.modifierReglages(e15, { duree: 20 });
+    var eAuto = L.modifierReglages(e20, { duree: "auto" });
+    egal(e15.reglages.duree, 15);
+    egal(e20.reglages.duree, 20);
+    egal(eAuto.reglages.duree, "auto");
+    egal(e20.reglages.duree, 20, "l’ancien état a été modifié");
+    egal(L.modifierReglages(e20, { duree: "30" }).reglages.duree, 20, "chaîne « 30 » ignorée");
+    egal(L.modifierReglages(e20, { duree: NaN }).reglages.duree, 20, "NaN ignoré");
+    egal(L.modifierReglages(eAuto, { duree: 25 }).reglages.duree, "auto", "25 ignoré");
+    egal(L.modifierReglages(e20, { duree: "Auto" }).reglages.duree, 20, "« Auto » avec majuscule ignoré");
+  });
+
+  test("marquerPaliersVus ajoute les seuils sans doublon et sans modifier l’ancien état", function () {
+    var e0 = L.etatInitial();
+    var e1 = L.marquerPaliersVus(e0, [3, 1]);
+    var e2 = L.marquerPaliersVus(e1, [7, 3, 8, "14"]);
+    pareil(e1.paliersVus, [1, 3]);
+    pareil(e2.paliersVus, [1, 3, 7]);
+    pareil(e0.paliersVus, []);
+    pareil(L.marquerPaliersVus(e2, "tout").paliersVus, [1, 3, 7]);
+  });
+
+  /* ================================================================== */
+  groupe("Intégrité des données réelles");
+  /* ================================================================== */
+
+  test("DDJ.themes existe et contient exactement les 7 jours", function () {
+    var i;
+    verifier(DDJ.themes && typeof DDJ.themes === "object", "DDJ.themes est absent");
+    for (i = 0; i < 7; i++) {
+      verifier(DDJ.themes[i] && typeof DDJ.themes[i] === "object", "thème du jour " + i + " (" + ATTENDUS[i].jour + ") absent");
+    }
+    pareil(Object.keys(DDJ.themes).sort(), ["0", "1", "2", "3", "4", "5", "6"]);
+  });
+
+  (function () {
+    var i;
+    function estTexte(v) {
+      return typeof v === "string" && v.replace(/\s/g, "") !== "";
+    }
+    function testsTheme(js) {
+      var a = ATTENDUS[js];
+      var nomTest = "thème du " + a.jour.toLowerCase();
+
+      test(nomTest + " : clé, jour, nom et description conformes", function () {
+        var t = themeReel(js);
+        egal(t.cle, a.cle, "cle");
+        egal(t.jour, a.jour, "jour");
+        egal(t.nom, a.nom, "nom");
+        verifier(estTexte(t.description), "description manquante");
+      });
+
+      test(nomTest + " : au moins 10 exercices", function () {
+        var n = themeReel(js).exercices.length;
+        verifier(n >= 10, "seulement " + n + " exercices");
+      });
+
+      test(nomTest + " : id uniques, préfixés « " + a.prefixe + " » et numérotés sur 2 chiffres", function () {
+        var liste = themeReel(js).exercices;
+        var motif = new RegExp("^" + a.prefixe + "\\d{2}$");
+        var vus = {};
+        var k, id;
+        for (k = 0; k < liste.length; k++) {
+          id = liste[k] ? liste[k].id : undefined;
+          verifier(typeof id === "string" && motif.test(id), "id mal formé (exercice n° " + (k + 1) + ") : " + stable(id));
+          verifier(vus[id] !== true, "id en double : " + id);
+          vus[id] = true;
+        }
+      });
+
+      test(nomTest + " : titre, consigne, matériel et siBloque présents et non vides", function () {
+        var liste = themeReel(js).exercices;
+        var champs = ["titre", "consigne", "materiel", "siBloque"];
+        var k, c;
+        for (k = 0; k < liste.length; k++) {
+          verifier(liste[k] && typeof liste[k] === "object", "l’exercice n° " + (k + 1) + " n’est pas un objet");
+          for (c = 0; c < champs.length; c++) {
+            verifier(estTexte(liste[k][champs[c]]), liste[k].id + " : champ « " + champs[c] + " » manquant ou vide");
+          }
+          verifier(liste[k].titre.length <= 50, liste[k].id + " : titre de " + liste[k].titre.length + " caractères (50 max)");
+        }
+      });
+
+      test(nomTest + " : exactement 3 étapes, chacune avec une indication de temps", function () {
+        var liste = themeReel(js).exercices;
+        var k, e, etapes;
+        for (k = 0; k < liste.length; k++) {
+          etapes = liste[k].etapes;
+          verifier(Object.prototype.toString.call(etapes) === "[object Array]", liste[k].id + " : etapes n’est pas un tableau");
+          egal(etapes.length, 3, liste[k].id + " : nombre d’étapes");
+          for (e = 0; e < 3; e++) {
+            verifier(estTexte(etapes[e]), liste[k].id + " : étape " + (e + 1) + " vide");
+            verifier(/^\D{0,12}\d/.test(etapes[e]), liste[k].id + " : étape " + (e + 1) + " sans durée au début (« " + etapes[e].slice(0, 30) + " »)");
+          }
+        }
+      });
+
+      test(nomTest + " : durée de 15, 20 ou 30 minutes", function () {
+        var liste = themeReel(js).exercices;
+        var k, d;
+        for (k = 0; k < liste.length; k++) {
+          d = liste[k].duree;
+          verifier(d === 15 || d === 20 || d === 30, liste[k].id + " : durée " + stable(d));
+        }
+      });
+    }
+    for (i = 0; i < ORDRE_JOURS.length; i++) {
+      testsTheme(ORDRE_JOURS[i]);
+    }
+  })();
+
+  test("les id sont uniques dans toute la banque, tous thèmes confondus", function () {
+    var vus = {};
+    var i, k, liste, id;
+    for (i = 0; i < ORDRE_JOURS.length; i++) {
+      liste = themeReel(ORDRE_JOURS[i]).exercices;
+      for (k = 0; k < liste.length; k++) {
+        id = liste[k].id;
+        verifier(vus[id] !== true, "id en double : " + id);
+        vus[id] = true;
+      }
+    }
+  });
+
+  test("aucun exercice n’apparaît deux fois avec le même titre dans un thème", function () {
+    var i, k, liste, vus, titre;
+    for (i = 0; i < ORDRE_JOURS.length; i++) {
+      liste = themeReel(ORDRE_JOURS[i]).exercices;
+      vus = {};
+      for (k = 0; k < liste.length; k++) {
+        titre = String(liste[k].titre).toLowerCase();
+        verifier(vus["t:" + titre] !== true, "titre en double (" + ATTENDUS[ORDRE_JOURS[i]].jour + ") : " + liste[k].titre);
+        vus["t:" + titre] = true;
+      }
+    }
+  });
+
+  test("générateur : au moins 30 sujets, textes non vides, sans doublon", function () {
+    var g = generateurReel();
+    var vus = {};
+    var i, s;
+    verifier(g.sujets.length >= 30, "seulement " + g.sujets.length + " sujets");
+    for (i = 0; i < g.sujets.length; i++) {
+      s = g.sujets[i];
+      verifier(typeof s === "string" && s.replace(/\s/g, "") !== "", "sujet n° " + (i + 1) + " vide");
+      egal(s, s.replace(/^\s+|\s+$/g, ""), "espaces en trop autour du sujet n° " + (i + 1));
+      verifier(vus["s:" + s.toLowerCase()] !== true, "sujet en double : " + s);
+      vus["s:" + s.toLowerCase()] = true;
+    }
+  });
+
+  test("générateur : au moins 30 contraintes, textes non vides, sans doublon", function () {
+    var g = generateurReel();
+    var vus = {};
+    var i, c;
+    verifier(g.contraintes.length >= 30, "seulement " + g.contraintes.length + " contraintes");
+    for (i = 0; i < g.contraintes.length; i++) {
+      c = g.contraintes[i];
+      verifier(typeof c === "string" && c.replace(/\s/g, "") !== "", "contrainte n° " + (i + 1) + " vide");
+      egal(c, c.replace(/^\s+|\s+$/g, ""), "espaces en trop autour de la contrainte n° " + (i + 1));
+      verifier(vus["c:" + c.toLowerCase()] !== true, "contrainte en double : " + c);
+      vus["c:" + c.toLowerCase()] = true;
+    }
+  });
+
+  test("générateur : toutes les combinaisons donnent un exercice bien formé", function () {
+    var g = generateurReel();
+    var i, j, e;
+    for (i = 0; i < g.sujets.length; i++) {
+      for (j = 0; j < g.contraintes.length; j++) {
+        e = L.exerciceGenere(i, j);
+        verifier(e, "exerciceGenere(" + i + ", " + j + ") a renvoyé null");
+        egal(e.id, "gen-" + i + "-" + j);
+        verifier(e.titre.charAt(0) === e.titre.charAt(0).toUpperCase(), "titre sans majuscule : " + e.titre);
+        egal(e.etapes.length, 3);
+      }
+    }
+    egal(L.exerciceGenere(g.sujets.length, 0), null, "index de sujet hors limites");
+    egal(L.exerciceGenere(0, -1), null, "index négatif");
+    egal(L.exerciceGenere(0.5, 0), null, "index non entier");
+  });
+
+  /* ================================================================== */
+  /* Bilan et affichage                                                  */
+  /* ================================================================== */
+
+  var echecs = [];
+  var reussis = 0;
+  (function () {
+    var i;
+    for (i = 0; i < resultats.length; i++) {
+      if (resultats[i].ok) {
+        reussis++;
+      } else {
+        echecs.push({ nom: resultats[i].groupe + " › " + resultats[i].nom, message: resultats[i].message });
+      }
+    }
+  })();
+
+  window.__tests = { total: resultats.length, reussis: reussis, echecs: echecs };
+
+  if (typeof document !== "undefined" && document && typeof document.createElement === "function") {
+    (function () {
+      var zone = document.getElementById("resultats");
+      var bilan = document.getElementById("bilan");
+      var groupeAffiche = null;
+      var liste = null;
+      var titre, compteur, i, r, li, message, okGroupe, totalGroupe, k;
+
+      for (i = 0; i < resultats.length; i++) {
+        r = resultats[i];
+        if (r.groupe !== groupeAffiche) {
+          groupeAffiche = r.groupe;
+          okGroupe = 0;
+          totalGroupe = 0;
+          for (k = 0; k < resultats.length; k++) {
+            if (resultats[k].groupe === groupeAffiche) {
+              totalGroupe++;
+              if (resultats[k].ok) {
+                okGroupe++;
+              }
+            }
+          }
+          titre = document.createElement("h2");
+          titre.appendChild(document.createTextNode(groupeAffiche + " "));
+          compteur = document.createElement("small");
+          compteur.appendChild(document.createTextNode("(" + okGroupe + "/" + totalGroupe + ")"));
+          titre.appendChild(compteur);
+          zone.appendChild(titre);
+          liste = document.createElement("ul");
+          zone.appendChild(liste);
+        }
+        li = document.createElement("li");
+        li.className = r.ok ? "ok" : "echec";
+        li.appendChild(document.createTextNode((r.ok ? "✓ " : "✗ ") + r.nom));
+        if (!r.ok) {
+          message = document.createElement("span");
+          message.className = "message";
+          message.appendChild(document.createTextNode(r.message));
+          li.appendChild(message);
+        }
+        liste.appendChild(li);
+      }
+
+      if (echecs.length === 0) {
+        bilan.className = "bilan ok";
+        bilan.textContent = "✓ " + reussis + "/" + resultats.length + " tests réussis";
+        document.title = "Tests : " + reussis + "/" + resultats.length + " OK";
+      } else {
+        bilan.className = "bilan echec";
+        bilan.textContent = "✗ " + echecs.length + " échec" + (echecs.length > 1 ? "s" : "") + " sur " + resultats.length +
+          " tests (" + reussis + " réussis)";
+        document.title = "Tests : " + echecs.length + " ÉCHECS";
+      }
+    })();
+  }
+})();
+</script>
+</body>
+</html>

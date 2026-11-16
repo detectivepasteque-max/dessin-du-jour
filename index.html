@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Un exercice de dessin par jour, 15 à 30 minutes sur papier, pour dessiner régulièrement et sans pression.">
+<title>Dessin du jour</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23b9553a'/%3E%3Cpath d='M20 44l3-11 17-17a4.2 4.2 0 0 1 6 6L29 39z' fill='%23fbf7ee'/%3E%3C/svg%3E">
+<script>
+/* Applique tout de suite le thème choisi, pour éviter un éclair de mauvais thème
+   au chargement. app.js fait foi ensuite (même clé que DDJ.logique.CLE_STOCKAGE). */
+(function () {
+  try {
+    var brut = window.localStorage.getItem("dessin-du-jour:v1");
+    var theme = brut ? JSON.parse(brut).reglages.theme : null;
+    if (theme === "clair" || theme === "sombre") {
+      document.documentElement.setAttribute("data-theme", theme);
+    }
+  } catch (e) { /* stockage absent ou illisible : on reste en thème automatique */ }
+})();
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<a class="lien-evitement" id="lien-evitement" href="#contenu">Aller au contenu</a>
+
+<header class="entete">
+  <div class="entete-interieur">
+    <a class="marque" href="#aujourdhui">
+      <span class="marque-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/></svg>
+      </span>
+      <span class="marque-nom">Dessin du jour</span>
+    </a>
+    <nav class="navigation" id="nav-principale" aria-label="Navigation principale">
+      <a class="nav-lien" href="#aujourdhui" data-vue="aujourdhui" aria-current="page">
+        <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg>
+        <span class="nav-texte">Aujourd’hui</span>
+      </a>
+      <a class="nav-lien" href="#calendrier" data-vue="calendrier">
+        <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+        <span class="nav-texte">Calendrier</span>
+      </a>
+      <a class="nav-lien" href="#reglages" data-vue="reglages">
+        <svg class="nav-icone" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+        <span class="nav-texte">Réglages</span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main class="contenu" id="contenu" tabindex="-1">
+
+  <noscript>
+    <p class="bandeau bandeau-alerte">Dessin du jour a besoin de JavaScript pour fonctionner. Active-le dans ton navigateur, puis recharge la page.</p>
+  </noscript>
+
+  <p class="bandeau bandeau-alerte" id="erreur-fatale" role="alert" hidden></p>
+
+  <div class="bandeau bandeau-alerte" id="bandeau-stockage" role="alert" hidden>
+    <p id="bandeau-stockage-texte"></p>
+  </div>
+
+  <div class="bandeau bandeau-info" id="bandeau-illisible" role="status" hidden>
+    <p id="bandeau-illisible-texte"></p>
+    <button type="button" class="bouton-secondaire bouton-petit" id="btn-fermer-illisible">J’ai compris</button>
+  </div>
+
+  <!-- ================================================================
+       1. AUJOURD’HUI
+       ================================================================ -->
+  <section class="vue" id="vue-aujourdhui" aria-labelledby="titre-aujourdhui">
+
+    <header class="entete-jour">
+      <p class="surtitre">Aujourd’hui</p>
+      <h1 class="vue-titre" id="titre-aujourdhui" tabindex="-1"><time id="date-jour"></time></h1>
+      <p class="theme-jour" id="theme-jour">Thème du jour : <strong id="theme-nom"></strong></p>
+      <p class="theme-description" id="theme-description"></p>
+    </header>
+
+    <div class="serie">
+      <p class="serie-principal">
+        <span class="serie-nombre" id="serie-nombre">0</span>
+        <span class="serie-libelle" id="serie-libelle">jour d’affilée</span>
+      </p>
+      <div class="serie-notes">
+        <p class="serie-note" id="serie-note"></p>
+        <p class="serie-note" id="serie-joker"></p>
+      </div>
+    </div>
+
+    <article class="carte carte-accent exercice" id="exercice" aria-labelledby="exercice-titre">
+      <p class="surtitre" id="exercice-surtitre">L’exercice du jour</p>
+      <h2 id="exercice-titre" tabindex="-1"></h2>
+      <p class="consigne" id="exercice-consigne"></p>
+      <h3>Les étapes</h3>
+      <ol class="etapes" id="exercice-etapes"></ol>
+      <p class="materiel" id="exercice-materiel-ligne"><strong>Matériel :</strong> <span id="exercice-materiel"></span></p>
+      <details class="si-bloque" id="exercice-bloque">
+        <summary>Si tu bloques</summary>
+        <p id="exercice-si-bloque"></p>
+      </details>
+      <div class="exercice-actions">
+        <button type="button" class="bouton-secondaire" id="btn-changer" aria-describedby="changer-restants">Changer d’exercice</button>
+        <p class="note" id="changer-restants"></p>
+      </div>
+    </article>
+
+    <div class="carte" id="exercice-absent" hidden>
+      <h2>Pas d’exercice à proposer</h2>
+      <p>L’exercice du jour est introuvable : les fichiers du dossier « donnees » sont peut-être absents ou incomplets à côté de index.html.</p>
+      <p>Ça ne t’empêche pas de dessiner : choisis ce qui te fait envie, lance le minuteur, puis coche ta séance.</p>
+    </div>
+
+    <section class="carte minuteur" id="minuteur" aria-labelledby="minuteur-titre" data-statut="pret">
+      <h2 id="minuteur-titre">Minuteur</h2>
+      <fieldset class="champ" id="minuteur-durees">
+        <legend>Durée de la séance</legend>
+        <div class="choix">
+          <label class="choix-option"><input type="radio" name="minuteur-duree" value="15"><span>15 min</span></label>
+          <label class="choix-option"><input type="radio" name="minuteur-duree" value="20" checked><span>20 min</span></label>
+          <label class="choix-option"><input type="radio" name="minuteur-duree" value="30"><span>30 min</span></label>
+        </div>
+      </fieldset>
+      <div class="minuteur-cadran">
+        <svg class="anneau" viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+          <circle class="anneau-fond" cx="60" cy="60" r="52" fill="none" stroke-width="8"/>
+          <circle class="anneau-progres" id="anneau-progres" cx="60" cy="60" r="52" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73" transform="rotate(-90 60 60)"/>
+        </svg>
+        <p class="minuteur-temps" id="minuteur-temps" role="timer" aria-label="Temps restant">20:00</p>
+      </div>
+      <div class="minuteur-actions">
+        <button type="button" class="bouton" id="btn-demarrer">Démarrer</button>
+        <button type="button" class="bouton" id="btn-pause" hidden>Pause</button>
+        <button type="button" class="bouton" id="btn-reprendre" hidden>Reprendre</button>
+        <button type="button" class="bouton-secondaire" id="btn-reinitialiser" disabled>Réinitialiser</button>
+      </div>
+      <p class="minuteur-message" id="minuteur-message" aria-live="polite"></p>
+    </section>
+
+    <section class="carte zone-fait" id="zone-fait" aria-labelledby="fait-titre">
+      <h2 class="visuellement-cache" id="fait-titre">Ma séance du jour</h2>
+
+      <div id="fait-avant">
+        <button type="button" class="bouton bouton-grand" id="btn-fait">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          <span>C’est fait</span>
+        </button>
+        <p class="note">À cocher quand tu veux, avec ou sans minuteur. Ici, on ne juge pas le dessin : on compte seulement que tu es là.</p>
+      </div>
+
+      <div id="fait-apres" hidden>
+        <p class="fait-etat" id="fait-etat" tabindex="-1">
+          <span class="fait-icone" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          </span>
+          <span>C’est fait pour aujourd’hui</span>
+        </p>
+        <p class="fait-encouragement" id="fait-encouragement"></p>
+
+        <div class="fete" id="palier-jour" hidden></div>
+
+        <div class="ressenti" id="ressenti-jour" role="group" aria-labelledby="ressenti-jour-titre">
+          <p class="ressenti-titre" id="ressenti-jour-titre">Comment c’était ? <span class="note">(facultatif)</span></p>
+          <div class="choix">
+            <button type="button" class="choix-bouton" data-ressenti="facile" aria-pressed="false">Facile</button>
+            <button type="button" class="choix-bouton" data-ressenti="bien" aria-pressed="false">Bien</button>
+            <button type="button" class="choix-bouton" data-ressenti="difficile" aria-pressed="false">Difficile</button>
+          </div>
+        </div>
+
+        <button type="button" class="bouton-discret" id="btn-annuler">Annuler (je n’ai pas dessiné)</button>
+      </div>
+    </section>
+
+  </section>
+
+  <!-- ================================================================
+       2. CALENDRIER
+       ================================================================ -->
+  <section class="vue" id="vue-calendrier" aria-labelledby="titre-calendrier" hidden>
+
+    <header class="entete-jour">
+      <p class="surtitre">Ta régularité</p>
+      <h1 class="vue-titre" id="titre-calendrier" tabindex="-1">Calendrier</h1>
+    </header>
+
+    <dl class="stats">
+      <div class="stat"><dt>Série en cours</dt><dd id="stat-serie">0</dd></div>
+      <div class="stat"><dt>Meilleure série</dt><dd id="stat-meilleure">0</dd></div>
+      <div class="stat"><dt>Jours dessinés</dt><dd id="stat-total">0</dd></div>
+      <div class="stat"><dt>Ce mois-ci</dt><dd id="stat-mois">0</dd></div>
+    </dl>
+
+    <section class="carte carte-calendrier" aria-labelledby="mois-titre">
+      <div class="mois-nav">
+        <button type="button" class="bouton-icone" id="btn-mois-prec" aria-label="Mois précédent">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <h2 class="mois-titre" id="mois-titre" tabindex="-1" aria-live="polite"></h2>
+        <button type="button" class="bouton-icone" id="btn-mois-suiv" aria-label="Mois suivant">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <p class="mois-retour">
+        <button type="button" class="bouton-secondaire bouton-petit" id="btn-mois-courant">Revenir à ce mois-ci</button>
+      </p>
+
+      <table class="grille" aria-labelledby="mois-titre">
+        <thead>
+          <tr>
+            <th scope="col"><span aria-hidden="true">lu</span><span class="visuellement-cache">lundi</span></th>
+            <th scope="col"><span aria-hidden="true">ma</span><span class="visuellement-cache">mardi</span></th>
+            <th scope="col"><span aria-hidden="true">me</span><span class="visuellement-cache">mercredi</span></th>
+            <th scope="col"><span aria-hidden="true">je</span><span class="visuellement-cache">jeudi</span></th>
+            <th scope="col"><span aria-hidden="true">ve</span><span class="visuellement-cache">vendredi</span></th>
+            <th scope="col"><span aria-hidden="true">sa</span><span class="visuellement-cache">samedi</span></th>
+            <th scope="col"><span aria-hidden="true">di</span><span class="visuellement-cache">dimanche</span></th>
+          </tr>
+        </thead>
+        <tbody id="grille-corps"></tbody>
+      </table>
+
+      <ul class="legende" aria-label="Légende du calendrier">
+        <li><span class="pastille pastille-fait" aria-hidden="true">✓</span> Dessin fait</li>
+        <li><span class="pastille pastille-joker" aria-hidden="true">◆</span> Couvert par un joker</li>
+        <li><span class="pastille pastille-aujourdhui" aria-hidden="true"></span> Aujourd’hui</li>
+        <li><span class="pastille pastille-futur" aria-hidden="true">9</span> À venir</li>
+      </ul>
+      <p class="note">Touche un jour passé pour voir son exercice, ou pour le cocher si tu avais dessiné sans le noter. Chaque semaine, un joker protège ta série en cours si tu sautes un jour.</p>
+    </section>
+
+    <section class="carte" aria-labelledby="paliers-titre">
+      <h2 id="paliers-titre">Paliers</h2>
+      <p class="note" id="paliers-prochain"></p>
+      <ol class="paliers" id="paliers-liste"></ol>
+    </section>
+
+  </section>
+
+  <!-- ================================================================
+       3. RÉGLAGES
+       ================================================================ -->
+  <section class="vue" id="vue-reglages" aria-labelledby="titre-reglages" hidden>
+
+    <header class="entete-jour">
+      <p class="surtitre">À ta main</p>
+      <h1 class="vue-titre" id="titre-reglages" tabindex="-1">Réglages</h1>
+    </header>
+
+    <section class="carte" aria-labelledby="reglages-seance-titre">
+      <h2 id="reglages-seance-titre">Séance</h2>
+      <fieldset class="champ" id="reglage-durees">
+        <legend>Durée du minuteur</legend>
+        <div class="choix">
+          <label class="choix-option"><input type="radio" name="reglage-duree" value="auto" checked><span>Conseillée par l’exercice</span></label>
+          <label class="choix-option"><input type="radio" name="reglage-duree" value="15"><span>15 min</span></label>
+          <label class="choix-option"><input type="radio" name="reglage-duree" value="20"><span>20 min</span></label>
+          <label class="choix-option"><input type="radio" name="reglage-duree" value="30"><span>30 min</span></label>
+        </div>
+        <p class="note">Avec « Conseillée par l’exercice », le minuteur se règle chaque jour sur la durée indiquée par l’exercice. Avec 15, 20 ou 30 min, il propose toujours cette durée. Dans les deux cas, tu peux encore en choisir une autre pour une séance, sur l’écran du jour.</p>
+      </fieldset>
+      <div class="champ">
+        <label class="case-a-cocher"><input type="checkbox" id="reglage-son" checked><span>Jouer un petit carillon à la fin du minuteur</span></label>
+        <p><button type="button" class="bouton-secondaire bouton-petit" id="btn-test-son">Écouter le carillon</button></p>
+      </div>
+    </section>
+
+    <section class="carte" aria-labelledby="reglages-apparence-titre">
+      <h2 id="reglages-apparence-titre">Apparence</h2>
+      <fieldset class="champ" id="reglage-themes">
+        <legend>Thème</legend>
+        <div class="choix">
+          <label class="choix-option"><input type="radio" name="reglage-theme" value="auto" checked><span>Automatique</span></label>
+          <label class="choix-option"><input type="radio" name="reglage-theme" value="clair"><span>Clair</span></label>
+          <label class="choix-option"><input type="radio" name="reglage-theme" value="sombre"><span>Sombre</span></label>
+        </div>
+        <p class="note">« Automatique » suit le réglage clair ou sombre de ton appareil.</p>
+      </fieldset>
+    </section>
+
+    <section class="carte" aria-labelledby="reglages-sauvegarde-titre">
+      <h2 id="reglages-sauvegarde-titre">Sauvegarde</h2>
+      <p>Ta progression (jours dessinés, ressenti, réglages) vit uniquement dans ce navigateur, sur cet appareil. Rien n’est envoyé ailleurs, et tes dessins restent sur ton papier.</p>
+      <p>Si tu vides les données du navigateur ou si tu changes d’appareil, elle disparaît : un export de temps en temps sert de filet de sécurité.</p>
+      <div class="actions">
+        <button type="button" class="bouton" id="btn-exporter">Exporter ma progression</button>
+        <button type="button" class="bouton-secondaire" id="btn-importer">Importer une sauvegarde</button>
+        <input class="visuellement-cache" type="file" id="fichier-import" accept=".json,application/json" tabindex="-1" aria-label="Fichier de sauvegarde à importer">
+      </div>
+      <p class="message" id="sauvegarde-message" role="status"></p>
+    </section>
+
+    <section class="carte" aria-labelledby="reglages-effacer-titre">
+      <h2 id="reglages-effacer-titre">Repartir de zéro</h2>
+      <p>Supprime de ce navigateur tous les jours cochés, les paliers et les réglages. Une confirmation te sera demandée.</p>
+      <div class="actions">
+        <button type="button" class="bouton-danger" id="btn-effacer">Tout effacer</button>
+      </div>
+    </section>
+
+  </section>
+
+  <p class="visuellement-cache" id="annonce" aria-live="polite"></p>
+
+</main>
+
+<!-- Détail d’un jour du calendrier -->
+<dialog class="dialogue" id="detail" aria-labelledby="detail-titre">
+  <div class="dialogue-contenu">
+    <h2 id="detail-titre" tabindex="-1"></h2>
+    <p class="detail-statut" id="detail-statut"></p>
+    <div class="detail-exercice">
+      <p class="surtitre" id="detail-exo-label"></p>
+      <p class="detail-exo-titre" id="detail-exo-titre"></p>
+      <p class="note" id="detail-exo-theme"></p>
+      <p id="detail-exo-consigne"></p>
+    </div>
+    <div class="ressenti" id="detail-ressenti" role="group" aria-labelledby="detail-ressenti-titre">
+      <p class="ressenti-titre" id="detail-ressenti-titre">Ressenti <span class="note">(facultatif)</span></p>
+      <div class="choix">
+        <button type="button" class="choix-bouton" data-ressenti="facile" aria-pressed="false">Facile</button>
+        <button type="button" class="choix-bouton" data-ressenti="bien" aria-pressed="false">Bien</button>
+        <button type="button" class="choix-bouton" data-ressenti="difficile" aria-pressed="false">Difficile</button>
+      </div>
+    </div>
+    <div class="fete" id="detail-palier" hidden></div>
+    <div class="dialogue-actions">
+      <button type="button" class="bouton" id="detail-basculer">Marquer comme fait</button>
+      <button type="button" class="bouton-secondaire" id="detail-fermer">Fermer</button>
+    </div>
+    <p class="visuellement-cache" id="detail-annonce" aria-live="polite"></p>
+  </div>
+</dialog>
+
+<!-- Confirmation (import, tout effacer) -->
+<dialog class="dialogue" id="confirmation" aria-labelledby="confirmation-titre" aria-describedby="confirmation-texte">
+  <div class="dialogue-contenu">
+    <h2 id="confirmation-titre" tabindex="-1"></h2>
+    <p id="confirmation-texte"></p>
+    <div class="dialogue-actions">
+      <button type="button" class="bouton" id="confirmation-oui">Confirmer</button>
+      <button type="button" class="bouton-secondaire" id="confirmation-non">Annuler</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Voile du repli, pour les navigateurs sans <dialog> natif -->
+<div class="voile" id="voile" hidden></div>
+
+<script src="donnees/exercices-semaine.js"></script>
+<script src="donnees/exercices-weekend.js"></script>
+<script src="logique.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
