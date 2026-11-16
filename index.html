@@ -155,6 +155,10 @@
         <button type="button" class="bouton-secondaire" id="btn-reinitialiser" disabled>Réinitialiser</button>
       </div>
       <p class="minuteur-message" id="minuteur-message" aria-live="polite"></p>
+      <p class="minuteur-ecran"><a class="bouton-secondaire" id="lien-dessiner" href="#dessiner">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="13" rx="2"/><path d="M8 14l2.5-.6L16 8a1.3 1.3 0 0 0-1.9-1.9L8.6 11.6z"/></svg>
+        <span>Dessiner à l’écran</span>
+      </a></p>
     </section>
 
     <section class="carte zone-fait" id="zone-fait" aria-labelledby="fait-titre">
@@ -208,6 +212,72 @@
         </section>
 
         <button type="button" class="bouton-discret" id="btn-annuler">Annuler (je n’ai pas dessiné)</button>
+      </div>
+    </section>
+
+  </section>
+
+  <!-- ================================================================
+       1 bis. DESSINER À L’ÉCRAN (feuille pour le stylet, la souris ou le doigt)
+       ================================================================ -->
+  <section class="vue" id="vue-dessiner" aria-labelledby="titre-dessiner" hidden>
+
+    <p class="chapitre-retour">
+      <a class="lien-retour" href="#aujourdhui">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+        <span>Aujourd’hui</span>
+      </a>
+    </p>
+
+    <header class="entete-jour">
+      <p class="surtitre">Au stylet, à la souris ou au doigt</p>
+      <h1 class="vue-titre" id="titre-dessiner" tabindex="-1">Dessiner à l’écran</h1>
+      <p class="croquis-sujet" id="croquis-sujet"></p>
+    </header>
+
+    <div class="croquis" id="croquis">
+      <div class="croquis-barre" role="toolbar" aria-label="Outils de dessin">
+        <div class="croquis-groupe" id="croquis-outils" role="group" aria-label="Outil">
+          <button type="button" class="croquis-bouton" data-outil="crayon" aria-pressed="true">Crayon</button>
+          <button type="button" class="croquis-bouton" data-outil="encre" aria-pressed="false">Encre</button>
+          <button type="button" class="croquis-bouton" data-outil="gomme" aria-pressed="false">Gomme</button>
+        </div>
+        <div class="croquis-groupe" id="croquis-tailles" role="group" aria-label="Épaisseur du trait">
+          <button type="button" class="croquis-bouton croquis-taille" data-taille="0" aria-pressed="false" aria-label="Trait fin"><span class="croquis-point croquis-point-0" aria-hidden="true"></span></button>
+          <button type="button" class="croquis-bouton croquis-taille" data-taille="1" aria-pressed="true" aria-label="Trait moyen"><span class="croquis-point croquis-point-1" aria-hidden="true"></span></button>
+          <button type="button" class="croquis-bouton croquis-taille" data-taille="2" aria-pressed="false" aria-label="Trait épais"><span class="croquis-point croquis-point-2" aria-hidden="true"></span></button>
+        </div>
+        <div class="croquis-groupe">
+          <button type="button" class="croquis-bouton" id="btn-croquis-annuler" disabled>Annuler</button>
+          <button type="button" class="croquis-bouton" id="btn-croquis-retablir" disabled>Rétablir</button>
+          <button type="button" class="croquis-bouton" id="btn-croquis-effacer" disabled>Tout effacer</button>
+        </div>
+        <div class="croquis-groupe croquis-groupe-fin">
+          <span class="croquis-minuteur" id="croquis-minuteur" aria-label="Temps restant au minuteur"></span>
+          <button type="button" class="croquis-bouton" id="btn-croquis-minuteur">Démarrer</button>
+          <button type="button" class="croquis-bouton" id="btn-croquis-agrandir" aria-pressed="false">Agrandir</button>
+        </div>
+      </div>
+      <div class="croquis-feuille" id="croquis-feuille">
+        <canvas class="croquis-toile" id="croquis-toile" width="1600" height="1200" role="img" aria-label="Feuille de dessin">Ton navigateur ne sait pas afficher la feuille de dessin.</canvas>
+      </div>
+    </div>
+    <p class="note" id="croquis-aide">Avec un stylet, la pression fait varier le trait, et le doigt ne laisse plus de trace dès qu’un stylet a servi. Ton dessin en cours est gardé dans ce navigateur tant que tu ne l’effaces pas.</p>
+
+    <section class="carte" aria-labelledby="croquis-suite-titre">
+      <h2 id="croquis-suite-titre">Quand tu as fini</h2>
+      <div class="actions">
+        <button type="button" class="bouton" id="btn-croquis-fait">C’est fait pour aujourd’hui</button>
+        <button type="button" class="bouton-secondaire" id="btn-croquis-juger" hidden>Montrer ce dessin à Claude</button>
+        <button type="button" class="bouton-secondaire" id="btn-croquis-juger-stop" hidden>Arrêter</button>
+        <button type="button" class="bouton-secondaire" id="btn-croquis-image">Enregistrer l’image</button>
+      </div>
+      <p class="message" id="croquis-message" role="status"></p>
+      <p class="claude-etat" id="croquis-retour-etat" role="status"></p>
+      <div class="retour" id="croquis-retour" hidden>
+        <p class="claude-marque">Le retour de Claude sur ton dessin</p>
+        <p class="claude-texte" id="croquis-retour-texte" tabindex="-1" aria-live="polite"></p>
+        <p class="note" id="croquis-retour-note" hidden>Ce retour sera gardé avec ton jour dès que ta séance sera cochée.</p>
       </div>
     </section>
 
@@ -586,6 +656,7 @@
 <script src="donnees/guide-3.js"></script>
 <script src="logique.js"></script>
 <script src="app.js"></script>
+<script src="croquis.js"></script>
 <script src="claude.js"></script>
 </body>
 </html>

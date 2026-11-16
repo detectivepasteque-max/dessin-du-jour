@@ -32,6 +32,8 @@
     "btn-adapter", "btn-adapter-stop", "adapter-etat", "exercice-titre",
     "retour", "retour-ia", "btn-retour", "btn-retour-stop", "retour-fichier",
     "retour-flux", "retour-etat", "retour-texte",
+    "btn-croquis-juger", "btn-croquis-juger-stop", "croquis-retour",
+    "croquis-retour-texte", "croquis-retour-note", "croquis-retour-etat",
     "mesure", "mesure-formulaire", "mesure-envie", "btn-mesure", "btn-mesure-stop",
     "mesure-etat", "mesure-liste",
     "question", "question-formulaire", "question-texte", "btn-question",
@@ -52,6 +54,7 @@
   var ideesProposees = [];       /* idées sur mesure affichées */
   var questionChapitre = null;   /* chapitre auquel se rapporte la zone de question */
   var jourRetour = null;         /* jour auquel se rapporte la zone de retour */
+  var retourAttente = null;      /* { cle, texte } : retour reçu sur un dessin fait à l’écran, jour pas encore coché */
 
   /* Progression gardée avec le compte (capacités « db » et « user »). */
   var sync = {
@@ -369,21 +372,21 @@
   function telecharger(nom, contenu, direSauvegarde) {
     if (telechargements === null) {
       if (hote !== null && dansUnCadre()) {
-        direSauvegarde("L’export n’est pas disponible dans cette vue. Ouvre la page dans Claude pour exporter ta progression.", true);
+        direSauvegarde("L’enregistrement de fichiers n’est pas disponible dans cette vue. Ouvre la page dans Claude pour le faire.", true);
         return true;
       }
       return false;
     }
     direSauvegarde("Confirme l’enregistrement dans la fenêtre que Claude vient d’ouvrir.", false);
     telechargements.save({ filename: nom, data: contenu }).then(function () {
-      direSauvegarde("Export enregistré : « " + nom + " ». Garde ce fichier dans un endroit sûr.", false);
+      direSauvegarde("Fichier enregistré : « " + nom + " ».", false);
     }, function (erreur) {
       if (erreur && erreur.code === "declined") {
-        direSauvegarde("Export annulé : rien n’a été enregistré.", false);
+        direSauvegarde("Enregistrement annulé : aucun fichier n’a été créé.", false);
       } else if (erreur && erreur.code === "rate_limited") {
         direSauvegarde("Une fenêtre d’enregistrement est déjà ouverte. Réponds-lui, puis réessaie.", true);
       } else {
-        direSauvegarde("L’export n’a pas pu être enregistré ici.", true);
+        direSauvegarde("Le fichier n’a pas pu être enregistré ici.", true);
       }
     });
     return true;
@@ -541,16 +544,27 @@
     return lignes.join("\n");
   }
 
-  function demandeRetour(fiche) {
+  /* aLEcran : vrai pour un dessin fait sur la feuille de l’appli (l’image
+     est alors le dessin lui-même, pas une photo de papier). */
+  function demandeRetour(fiche, aLEcran) {
     var exercice = app.exercice();
-    var sujet = fiche.titre || "un dessin libre";
+    var sujet = "un dessin libre";
     var consigne = "";
     var chapitres = listeChapitres();
+    if (fiche && fiche.titre) {
+      sujet = fiche.titre;
+    } else if (!fiche && exercice && exercice.titre) {
+      sujet = exercice.titre;
+    }
     /* La consigne n’est connue que pour l’exercice du jour lui-même. */
-    if (exercice && fiche.exerciceId === exercice.id && exercice.consigne) {
+    if (exercice && exercice.consigne && (!fiche || fiche.exerciceId === exercice.id)) {
       consigne = "\nLa consigne était : " + exercice.consigne;
     }
-    return "Tu es un professeur de dessin bienveillant et précis. La photo jointe montre un dessin fait sur papier " +
+    return "Tu es un professeur de dessin bienveillant et précis. " +
+      (aLEcran ?
+        "L’image jointe est un dessin fait à l’écran, au stylet sur une tablette graphique (ou à la souris), " +
+        "au crayon et à l’encre numériques sur une feuille claire, " :
+        "La photo jointe montre un dessin fait sur papier ") +
       "par une personne qui débute et s’entraîne chaque jour, 15 à 30 minutes. Le but de cette pratique est la " +
       "régularité, pas le résultat.\n\n" +
       "Ce qu’elle a dessiné aujourd’hui : « " + sujet + " »." + consigne + "\n\n" +
@@ -562,53 +576,102 @@
       "« Ce qui marche : » une ou deux choses réussies, précises, visibles sur ce dessin.\n" +
       "« À travailler : » un seul point, le plus utile, avec un geste concret à essayer au prochain dessin.\n" +
       "« À relire : » le chapitre du guide le plus utile pour ce point (numéro et titre), ou « rien de particulier ».\n\n" +
-      "Ne note pas le dessin et ne le compare à rien. Si la photo ne montre pas un dessin, ou s’il est illisible " +
-      "(flou, trop sombre, coupé), dis-le simplement en une phrase et demande une photo plus nette, sans les trois paragraphes.";
+      (aLEcran ?
+        "Ne note pas le dessin et ne le compare à rien. Ne commente pas l’outil numérique : parle du dessin. Si " +
+        "l’image est presque vide (quelques traits seulement), dis-le simplement en une phrase et encourage à " +
+        "continuer, sans les trois paragraphes." :
+        "Ne note pas le dessin et ne le compare à rien. Si la photo ne montre pas un dessin, ou s’il est illisible " +
+        "(flou, trop sombre, coupé), dis-le simplement en une phrase et demande une photo plus nette, sans les trois paragraphes.");
   }
 
-  function lancerRetour(fichier) {
+  /* Montre une image à Claude et range son retour.
+     aLEcran faux : photo d’un dessin sur papier, depuis l’écran du jour (le
+     jour doit être coché, le retour est noté dessus).
+     aLEcran vrai : dessin fait sur la feuille de l’appli ; si le jour n’est
+     pas encore coché, le retour attend (retourAttente) et sera noté dès qu’il
+     le sera. */
+  function lancerRetour(imageDuDessin, aLEcran) {
+    var nom = aLEcran ? "croquis" : "retour";
+    var zoneFlux = aLEcran ? el.croquisRetourTexte : el.retourFlux;
+    var zoneEtat = aLEcran ? el.croquisRetourEtat : el.retourEtat;
     var cle = app.cleJour();
     var fiche = app.fiche();
     var controle;
-    if (!disponible() || !ia.photo || !fiche || ia.enCours.retour) {
+    if (!disponible() || !ia.photo || ia.enCours[nom] || (!aLEcran && !fiche)) {
       return;
     }
-    controle = ouvrir("retour");
-    texte(el.retourFlux, "");
-    dire(el.retourEtat, "Claude regarde ton dessin…", false);
+    controle = ouvrir(nom);
+    texte(zoneFlux, "");
+    dire(zoneEtat, "Claude regarde ton dessin…", false);
     apresRendu();
-    ia.demander(demandeRetour(fiche), {
-      images: fichier,
+    ia.demander(demandeRetour(fiche, aLEcran), {
+      images: imageDuDessin,
       signal: controle.signal,
       cache: false,
       onText: function (avancee) {
-        dire(el.retourEtat, "", false);
-        texte(el.retourFlux, avancee.text);
+        dire(zoneEtat, "", false);
+        if (aLEcran) {
+          montrer(el.croquisRetour, true);
+        }
+        texte(zoneFlux, avancee.text);
       }
     }).then(function (reponse) {
-      fermer("retour");
-      texte(el.retourFlux, "");
-      if (!Object.prototype.hasOwnProperty.call(app.etat().jours, cle)) {
-        dire(el.retourEtat, "Ce jour n’est plus coché : le retour n’a pas été gardé.", false);
-        apresRendu();
-        return;
+      var coche = Object.prototype.hasOwnProperty.call(app.etat().jours, cle);
+      fermer(nom);
+      dire(zoneEtat, reponse.truncated ? "La réponse a été coupée : elle était trop longue." : "", false);
+      if (!aLEcran) {
+        texte(zoneFlux, "");
+        if (!coche) {
+          dire(zoneEtat, "Ce jour n’est plus coché : le retour n’a pas été gardé.", false);
+          apresRendu();
+          return;
+        }
       }
-      app.modifier(function (etat) {
-        return L.noterRetour(etat, cle, reponse.text);
-      });
-      dire(el.retourEtat, reponse.truncated ? "La réponse a été coupée : elle était trop longue." : "", false);
+      if (coche) {
+        retourAttente = null;
+        app.modifier(function (etat) {
+          return L.noterRetour(etat, cle, reponse.text);
+        });
+      } else {
+        /* Dessin fait à l’écran, jour pas encore coché : le retour patiente. */
+        retourAttente = { cle: cle, texte: reponse.text };
+        apresRendu();
+      }
       if (app.cleJour() === cle) {
-        app.focusser(el.retourTexte);
+        app.focusser(aLEcran ? el.croquisRetourTexte : el.retourTexte);
       }
       app.annoncer("Le retour de Claude est arrivé.");
     }, function (erreur) {
-      fermer("retour");
+      var partiel = erreur && erreur.code !== "refused" && typeof erreur.text === "string" ? erreur.text : "";
+      fermer(nom);
       /* Un texte partiel peut rester à l’écran, sauf s’il a été retiré par Claude. */
-      texte(el.retourFlux, erreur && erreur.code !== "refused" && typeof erreur.text === "string" ? erreur.text : "");
-      if (!echec(el.retourEtat, erreur)) {
-        texte(el.retourFlux, "");
+      if (!echec(zoneEtat, erreur)) {
+        partiel = "";
+      }
+      if (!aLEcran) {
+        texte(zoneFlux, partiel);
       }
       apresRendu();
+    });
+  }
+
+  /* « Montrer ce dessin à Claude », depuis la feuille de dessin. */
+  function surJugerCroquis() {
+    var croquis = DDJ.croquis;
+    if (!croquis || typeof croquis.image !== "function" || !disponible() || !ia.photo || ia.enCours.croquis) {
+      return;
+    }
+    if (croquis.estVide()) {
+      dire(el.croquisRetourEtat, "La feuille est vide : dessine d’abord quelque chose.", true);
+      return;
+    }
+    dire(el.croquisRetourEtat, "Préparation de l’image…", false);
+    croquis.image(function (blob) {
+      if (!blob) {
+        dire(el.croquisRetourEtat, "L’image du dessin n’a pas pu être préparée dans ce navigateur.", true);
+        return;
+      }
+      lancerRetour(blob, true);
     });
   }
 
@@ -774,14 +837,40 @@
 
   /* Appelé par l’appli après chaque réaffichage, et ici après chaque étape. */
   function apresRendu() {
-    var dispo, fiche, exercice, garde, chapitre, occupe;
+    var dispo, fiche, exercice, garde, chapitre, occupe, attente, enAttente;
     if (!pret) {
+      return;
+    }
+    /* Un retour reçu sur un dessin fait à l’écran attendait que son jour soit
+       coché : il l’est, on le range (ce qui relance un réaffichage). */
+    if (retourAttente !== null && Object.prototype.hasOwnProperty.call(app.etat().jours, retourAttente.cle)) {
+      attente = retourAttente;
+      retourAttente = null;
+      app.modifier(function (etat) {
+        return L.noterRetour(etat, attente.cle, attente.texte);
+      });
       return;
     }
     dispo = disponible();
     fiche = app.fiche();
     exercice = app.exercice();
     chapitre = app.chapitre();
+
+    /* Feuille de dessin : montrer le dessin à Claude, et son retour */
+    occupe = !!ia.enCours.croquis;
+    garde = fiche ? L.retourDuJour(app.etat(), app.cleJour()) : "";
+    enAttente = retourAttente !== null && retourAttente.cle === app.cleJour() ? retourAttente.texte : "";
+    montrer(el.btnCroquisJuger, dispo && ia.photo && !occupe);
+    montrer(el.btnCroquisJugerStop, occupe);
+    if (!occupe) {
+      /* Pendant une demande, le texte qui arrive est écrit au fil de l’eau. */
+      texte(el.croquisRetourTexte, garde !== "" ? garde : enAttente);
+      montrer(el.croquisRetour, garde !== "" || enAttente !== "");
+      montrer(el.croquisRetourNote, garde === "" && enAttente !== "");
+    }
+    if (!dispo) {
+      dire(el.croquisRetourEtat, "", false);
+    }
 
     /* Exercice adapté */
     occupe = !!ia.enCours.adapter;
@@ -861,6 +950,10 @@
     el.btnRetourStop.addEventListener("click", function () {
       arreter("retour");
     });
+    el.btnCroquisJuger.addEventListener("click", surJugerCroquis);
+    el.btnCroquisJugerStop.addEventListener("click", function () {
+      arreter("croquis");
+    });
     el.mesureFormulaire.addEventListener("submit", surIdeesSurMesure);
     el.btnMesureStop.addEventListener("click", function () {
       arreter("mesure");
@@ -892,6 +985,7 @@
     ia.photo = false;
     ia.coupe = false;
     ia.enCours = {};
+    retourAttente = null;
     telechargements = null;
     if (sync.minuterie !== null) {
       window.clearTimeout(sync.minuterie);

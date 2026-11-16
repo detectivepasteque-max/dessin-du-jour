@@ -1353,6 +1353,116 @@ textarea.champ-texte { min-height: 5.5rem; resize: vertical; }
 .sync-etat[data-etat="erreur"]::before { background: var(--danger); }
 
 /* --------------------------------------------------------------------------
+   10 ter. Feuille de dessin à l’écran
+   La feuille reste une feuille de papier dans les deux thèmes : fond clair et
+   mine sombre, comme les schémas du guide. Seule la barre d’outils suit le thème.
+   -------------------------------------------------------------------------- */
+.minuteur-ecran { margin: 1rem 0 0; }
+.minuteur-ecran .bouton-secondaire { gap: .5rem; text-decoration: none; }
+
+.croquis-sujet { margin: 0; color: var(--encre-2); }
+.croquis-sujet strong { color: var(--encre); }
+
+.croquis {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  margin: 0 0 .6rem;
+}
+.croquis-barre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .9rem;
+  padding: .5rem .6rem;
+  background: var(--carte);
+  border: 1px solid var(--ligne);
+  border-radius: var(--rayon);
+}
+.croquis-groupe { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.croquis-groupe-fin { margin-left: auto; }
+.croquis-bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: .35rem .8rem;
+  border: 1px solid var(--ligne-forte);
+  border-radius: 999px;
+  background: var(--carte);
+  color: var(--encre);
+  font-size: .92rem;
+}
+.croquis-bouton:hover:not(:disabled) { border-color: var(--accent); }
+.croquis-bouton:disabled { opacity: .5; }
+.croquis-bouton[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--sur-accent);
+  font-weight: 600;
+}
+.croquis-taille { padding: 0; }
+.croquis-point { display: block; border-radius: 50%; background: currentColor; }
+.croquis-point-0 { width: 5px; height: 5px; }
+.croquis-point-1 { width: 10px; height: 10px; }
+.croquis-point-2 { width: 18px; height: 18px; }
+.croquis-minuteur {
+  min-width: 3.4em;
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.croquis-feuille {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.croquis-toile {
+  display: block;
+  /* La taille à l’écran est posée par croquis.js (rapport 4:3 gardé). */
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid #8f8474;
+  border-radius: 6px;
+  background: #fbf7ee;
+  box-shadow: var(--ombre);
+  cursor: crosshair;
+  /* Le geste dessine : il ne fait ni défiler ni zoomer la page. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* « Agrandir » : la feuille prend tout l’écran, barre d’outils en haut. */
+.croquis-plein {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  margin: 0;
+  padding-top: calc(.5rem + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(.5rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(.5rem, env(safe-area-inset-left, 0px));
+  padding-right: max(.5rem, env(safe-area-inset-right, 0px));
+  background: var(--papier);
+}
+.croquis-plein .croquis-feuille { flex: 1 1 auto; }
+:root.croquis-ouvert, :root.croquis-ouvert body { overflow: hidden; }
+
+@media print {
+  .croquis-barre, .minuteur-ecran { display: none !important; }
+}
+
+/* --------------------------------------------------------------------------
    11. Mouvement réduit
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {

@@ -34,7 +34,9 @@
   /* ------------------------------------------------------------------ */
 
   var TITRE_BASE = "Dessin du jour";
-  var VUES = ["aujourdhui", "idees", "apprendre", "calendrier", "reglages"];
+  /* « dessiner » (la feuille à l’écran) n’a pas d’onglet : on y entre depuis
+     l’écran du jour, dont il reste une dépendance. */
+  var VUES = ["aujourdhui", "dessiner", "idees", "apprendre", "calendrier", "reglages"];
   var CLE = L.CLE_STOCKAGE;
   var PREFIXE_COPIE = CLE + ":illisible-";   /* copies de données illisibles */
   var CLE_MINUTEUR = "dessin-du-jour:minuteur"; /* sessionStorage : survit au rechargement */
@@ -106,6 +108,7 @@
     "zone-fait", "fait-avant", "btn-fait", "fait-apres", "fait-etat",
     "fait-dessin", "fait-encouragement", "palier-jour", "ressenti-jour", "btn-annuler",
     "retour", "retour-garde", "retour-texte", "retour-ia",
+    "vue-dessiner", "titre-dessiner",
     "vue-idees", "titre-idees", "idees-absentes", "idees-corps",
     "idees-categories", "idees-categories-choix", "idees-categorie-description",
     "idee", "idee-titre", "idee-texte", "idee-morceaux", "idee-aide",
@@ -573,7 +576,8 @@
       montrer(el[nomCamel("vue-" + VUES[i])], VUES[i] === nom);
     }
     for (i = 0; i < liens.length; i++) {
-      if (liens[i].getAttribute("data-vue") === nom) {
+      /* La feuille de dessin fait partie de l’écran du jour. */
+      if (liens[i].getAttribute("data-vue") === (nom === "dessiner" ? "aujourdhui" : nom)) {
         liens[i].setAttribute("aria-current", "page");
       } else {
         liens[i].removeAttribute("aria-current");
@@ -3041,10 +3045,16 @@
      état de la sauvegarde) après chaque réaffichage. */
   function apresRendu() {
     var ia = DDJ.ia;
+    var croquis = DDJ.croquis;
+    if (croquis && typeof croquis.apresRendu === "function") {
+      try {
+        croquis.apresRendu();
+      } catch (e) { /* l’appli marche sans la feuille de dessin */ }
+    }
     if (ia && typeof ia.apresRendu === "function") {
       try {
         ia.apresRendu();
-      } catch (e) { /* l’appli marche sans ces blocs */ }
+      } catch (e2) { /* l’appli marche sans ces blocs */ }
     }
   }
 
@@ -3121,6 +3131,15 @@
       reprendreIdee({ categorieCle: "", categorieNom: "Sur mesure", texte: propre, morceaux: [] });
       annoncer("Idée choisie : " + propre + ".");
     },
+    /* Coche la séance du jour affiché, comme le bouton « C’est fait ».
+       Renvoie vrai si le jour est coché à la sortie. */
+    cocher: function () {
+      surFait();
+      return !!ficheDuJour(cleJour);
+    },
+    /* Demande une confirmation dans le dialogue de l’appli, puis lance « action ».
+       options : { titre, texte, oui, danger, retour }. */
+    confirmer: demanderConfirmation,
     annoncer: annoncer,
     focusser: focusser
   };
