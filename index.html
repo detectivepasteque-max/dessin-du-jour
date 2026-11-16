@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr" data-theme="auto">
+<html lang="fr" data-apparence="auto">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7,14 +7,14 @@
 <title>Dessin du jour</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23b9553a'/%3E%3Cpath d='M20 44l3-11 17-17a4.2 4.2 0 0 1 6 6L29 39z' fill='%23fbf7ee'/%3E%3C/svg%3E">
 <script>
-/* Applique tout de suite le thème choisi, pour éviter un éclair de mauvais thème
+/* Applique tout de suite le thème choisi (attribut data-apparence), pour éviter un éclair de mauvais thème
    au chargement. app.js fait foi ensuite (même clé que DDJ.logique.CLE_STOCKAGE). */
 (function () {
   try {
     var brut = window.localStorage.getItem("dessin-du-jour:v1");
     var theme = brut ? JSON.parse(brut).reglages.theme : null;
     if (theme === "clair" || theme === "sombre") {
-      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.setAttribute("data-apparence", theme);
     }
   } catch (e) { /* stockage absent ou illisible : on reste en thème automatique */ }
 })();
@@ -109,9 +109,19 @@
         <summary>Si tu bloques</summary>
         <p id="exercice-si-bloque"></p>
       </details>
+      <div class="exercice-adapte" id="exercice-adapte" hidden>
+        <p class="claude-marque">Adapté pour toi par Claude</p>
+        <p id="exercice-adapte-texte"></p>
+        <p><button type="button" class="bouton-secondaire bouton-petit" id="btn-origine">Revenir à l’exercice d’origine</button></p>
+      </div>
       <div class="exercice-actions">
-        <button type="button" class="bouton-secondaire" id="btn-changer" aria-describedby="changer-restants">Changer d’exercice</button>
+        <div class="actions">
+          <button type="button" class="bouton-secondaire" id="btn-changer" aria-describedby="changer-restants">Changer d’exercice</button>
+          <button type="button" class="bouton-secondaire" id="btn-adapter" hidden>Adapte-le pour moi</button>
+          <button type="button" class="bouton-secondaire" id="btn-adapter-stop" hidden>Arrêter</button>
+        </div>
         <p class="note" id="changer-restants"></p>
+        <p class="claude-etat" id="adapter-etat" role="status"></p>
       </div>
     </article>
 
@@ -179,6 +189,24 @@
           </div>
         </div>
 
+        <section class="retour" id="retour" aria-labelledby="retour-titre" hidden>
+          <h3 class="visuellement-cache" id="retour-titre">Retour sur ton dessin</h3>
+          <div class="retour-garde" id="retour-garde" hidden>
+            <p class="claude-marque">Le retour de Claude sur ton dessin</p>
+            <p class="claude-texte" id="retour-texte"></p>
+          </div>
+          <div class="retour-ia" id="retour-ia" hidden>
+            <div class="actions">
+              <button type="button" class="bouton-secondaire" id="btn-retour">Montrer mon dessin à Claude</button>
+              <button type="button" class="bouton-secondaire" id="btn-retour-stop" hidden>Arrêter</button>
+              <input class="visuellement-cache" type="file" id="retour-fichier" accept="image/jpeg,image/png,image/webp" tabindex="-1" aria-label="Photo de ton dessin">
+            </div>
+            <p class="note">Prends ton dessin en photo, bien éclairé et à plat. La photo sert à cette réponse, puis elle n’est pas gardée : seul le texte du retour reste noté sur ce jour.</p>
+            <p class="claude-texte" id="retour-flux" aria-live="polite"></p>
+            <p class="claude-etat" id="retour-etat" role="status"></p>
+          </div>
+        </section>
+
         <button type="button" class="bouton-discret" id="btn-annuler">Annuler (je n’ai pas dessiné)</button>
       </div>
     </section>
@@ -227,6 +255,22 @@
         </div>
         <p class="note-jour" id="idee-jour-note" tabindex="-1" hidden></p>
         <div class="fete" id="idee-palier" hidden></div>
+      </section>
+
+      <section class="carte" id="mesure" aria-labelledby="mesure-titre" hidden>
+        <p class="claude-marque">Avec Claude</p>
+        <h2 id="mesure-titre">Une idée sur mesure</h2>
+        <form id="mesure-formulaire" novalidate>
+          <label class="champ-libelle" for="mesure-envie">De quoi as-tu envie ?</label>
+          <div class="champ-ligne">
+            <input class="champ-texte" type="text" id="mesure-envie" maxlength="120" autocomplete="off" placeholder="Un mot, un univers, une contrainte…" aria-describedby="mesure-aide">
+            <button type="submit" class="bouton" id="btn-mesure">Demander des idées</button>
+            <button type="button" class="bouton-secondaire" id="btn-mesure-stop" hidden>Arrêter</button>
+          </div>
+          <p class="note" id="mesure-aide">Par exemple : « des chats, en 15 minutes », « un lieu sous la pluie », « quelque chose de drôle avec une théière ». Tu peux aussi laisser vide.</p>
+        </form>
+        <p class="claude-etat" id="mesure-etat" role="status"></p>
+        <ul class="mesure-liste" id="mesure-liste" role="list" aria-label="Idées proposées par Claude"></ul>
       </section>
 
       <section class="carte" aria-labelledby="idees-recentes-titre">
@@ -310,6 +354,23 @@
           <div class="fete" id="chapitre-palier" hidden></div>
         </div>
       </div>
+
+      <section class="carte question" id="question" aria-labelledby="question-titre" hidden>
+        <p class="claude-marque">Avec Claude</p>
+        <h2 id="question-titre">Une question sur ce chapitre ?</h2>
+        <form id="question-formulaire" novalidate>
+          <label class="champ-libelle" for="question-texte">Ce qui te bloque, ou ce que tu veux creuser</label>
+          <textarea class="champ-texte" id="question-texte" maxlength="400" rows="3" placeholder="Par exemple : je ne comprends pas où placer le point de fuite."></textarea>
+          <div class="actions">
+            <button type="submit" class="bouton" id="btn-question">Poser la question</button>
+            <button type="button" class="bouton-secondaire" id="btn-question-stop" hidden>Arrêter</button>
+          </div>
+        </form>
+        <p class="claude-etat" id="question-etat" role="status"></p>
+        <div class="question-reponse" id="question-reponse" hidden>
+          <p class="claude-texte" id="question-reponse-texte" tabindex="-1" aria-live="polite"></p>
+        </div>
+      </section>
 
       <nav class="chapitre-nav" aria-label="D’un chapitre à l’autre">
         <a class="chapitre-nav-lien" id="chapitre-prec" href="#apprendre">
@@ -433,8 +494,15 @@
 
     <section class="carte" aria-labelledby="reglages-sauvegarde-titre">
       <h2 id="reglages-sauvegarde-titre">Sauvegarde</h2>
-      <p>Ta progression (jours dessinés, ressenti, idées gardées en favori, avancement dans le guide, réglages) vit uniquement dans ce navigateur, sur cet appareil. Rien n’est envoyé ailleurs, et tes dessins restent sur ton papier.</p>
-      <p>Si tu vides les données du navigateur ou si tu changes d’appareil, elle disparaît : un export de temps en temps sert de filet de sécurité. Le fichier exporté contient tout cela, favoris et avancement du guide compris, et l’import remet tout en place.</p>
+      <p class="sync-etat" id="sync-etat" data-etat="local" role="status">Enregistrée dans ce navigateur</p>
+      <div id="sauvegarde-locale">
+        <p>Ta progression (jours dessinés, ressenti, idées gardées en favori, avancement dans le guide, réglages) vit uniquement dans ce navigateur, sur cet appareil. Rien n’est envoyé ailleurs, et tes dessins restent sur ton papier.</p>
+        <p>Si tu vides les données du navigateur ou si tu changes d’appareil, elle disparaît : un export de temps en temps sert de filet de sécurité. Le fichier exporté contient tout cela, favoris et avancement du guide compris, et l’import remet tout en place.</p>
+      </div>
+      <div id="sauvegarde-compte" hidden>
+        <p>Ta progression (jours dessinés, ressenti, retours de Claude, idées gardées en favori, avancement dans le guide, réglages) est gardée avec ton compte Claude, dans un espace réservé à ton compte. Tu la retrouves sur chacun de tes appareils en ouvrant cette page. Tes dessins restent sur ton papier.</p>
+        <p>Un export de temps en temps reste un bon filet de sécurité : le fichier contient tout cela, et l’import remet tout en place.</p>
+      </div>
       <div class="actions">
         <button type="button" class="bouton" id="btn-exporter">Exporter ma progression</button>
         <button type="button" class="bouton-secondaire" id="btn-importer">Importer une sauvegarde</button>
@@ -443,9 +511,15 @@
       <p class="message" id="sauvegarde-message" role="status"></p>
     </section>
 
+    <section class="carte" id="reglages-claude" aria-labelledby="reglages-claude-titre" hidden>
+      <h2 id="reglages-claude-titre">Avec Claude</h2>
+      <p>Quatre fonctions font appel à Claude, seulement quand tu le demandes : le retour sur une photo de ton dessin, les idées sur mesure, les questions sur un chapitre du guide et l’exercice adapté. Elles passent par ton compte Claude et comptent dans ton usage. La première fois, Claude te demande ton accord.</p>
+      <p class="note">Si Claude ne répond pas, tout le reste continue de marcher : l’exercice du jour, le minuteur, les idées tirées au hasard, le guide et ta série.</p>
+    </section>
+
     <section class="carte" aria-labelledby="reglages-effacer-titre">
       <h2 id="reglages-effacer-titre">Repartir de zéro</h2>
-      <p>Supprime de ce navigateur tous les jours cochés, les paliers, les idées gardées en favori, l’avancement dans le guide et les réglages. Une confirmation te sera demandée.</p>
+      <p>Supprime tous les jours cochés, les paliers, les idées gardées en favori, l’avancement dans le guide et les réglages. Une confirmation te sera demandée.</p>
       <div class="actions">
         <button type="button" class="bouton-danger" id="btn-effacer">Tout effacer</button>
       </div>
@@ -475,6 +549,10 @@
         <button type="button" class="choix-bouton" data-ressenti="bien" aria-pressed="false">Bien</button>
         <button type="button" class="choix-bouton" data-ressenti="difficile" aria-pressed="false">Difficile</button>
       </div>
+    </div>
+    <div class="retour" id="detail-retour-bloc" hidden>
+      <p class="claude-marque">Le retour de Claude</p>
+      <p class="claude-texte" id="detail-retour"></p>
     </div>
     <div class="fete" id="detail-palier" hidden></div>
     <div class="dialogue-actions">
@@ -508,5 +586,6 @@
 <script src="donnees/guide-3.js"></script>
 <script src="logique.js"></script>
 <script src="app.js"></script>
+<script src="claude.js"></script>
 </body>
 </html>

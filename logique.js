@@ -358,6 +358,35 @@
    L.hacher(chaine)           -> entier 32 bits non signé (FNV-1a).
    L.mulberry32(graine)       -> fonction () -> nombre dans [0, 1[.
    L.permutation(n, graine)   -> tableau des entiers 0..n-1 mélangés.
+
+   --------------------------------------------------------------------------
+   9. COMPLÉMENTS (fonctions « avec Claude » de l’appli publiée en artefact)
+   --------------------------------------------------------------------------
+   Rien ici n’appelle Claude : ce sont les garde-fous par lesquels passe tout
+   texte reçu avant d’être rangé. L’état gagne deux champs FACULTATIFS,
+   présents seulement s’ils ont un contenu (une progression sans eux garde
+   exactement sa forme d’avant, et la version reste 1) :
+     retours    { "AAAA-MM-JJ": texte } : retour de Claude sur le dessin d’un
+                jour coché (L.MAX_RETOUR caractères au plus). Un retour dont
+                le jour n’est pas coché n’est pas gardé.
+     adaptation { date, base, titre, consigne, etapes, materiel, siBloque,
+                  duree, pourquoi } : version adaptée de l’exercice « base »
+                pour le jour « date ».
+   L.retourDuJour(etat, cle)            -> texte, "" s’il n’y en a pas.
+   L.noterRetour(etat, cle, texte)      -> nouvel état (texte vide : retire).
+   L.poserAdaptation(etat, cle, base, proposition) -> nouvel état ; inchangé
+       si la proposition est inutilisable (titre ou consigne vides, moins de
+       deux étapes). duree hors de L.DUREES : ramenée à 20.
+   L.retirerAdaptation(etat)            -> nouvel état.
+   L.adaptationDuJour(etat, cle)        -> exercice (id "adapte-<base>",
+       adapte: true, pourquoi) ou null. L.changerExercice l’abandonne.
+   L.nettoyerIdeesSurMesure(valeur)     -> au plus 4 textes d’une ligne.
+   L.texteChapitre(id)                  -> le chapitre du guide à plat, "".
+   L.contexteProgression(etat, cle, n)  -> { total, serie, recents, chapitresFaits }.
+   L.estEtatVierge(etat)                -> booléen.
+   L.fusionnerEtats(a, b)               -> réunion de deux progressions sans
+       rien perdre ; à égalité « a » l’emporte, sauf pour un même jour, où la
+       fiche cochée le plus tard est gardée. Réglages de « a ».
    ========================================================================== */
 
 (function (racine) {
@@ -389,6 +418,16 @@
   var MAX_LECTURE_FAVORIS = 1000; /* garde-fou : entrées examinées dans une sauvegarde */
   var MAX_PROFONDEUR_COPIE = 12;
   var RE_ID_CHAPITRE = /^g\d{2}$/;
+  var MAX_RETOUR = 1500;          /* retour de Claude sur un dessin */
+  var PREFIXE_ADAPTE = "adapte-"; /* id d’un exercice adapté : "adapte-lun-03" */
+  var MAX_CONSIGNE = 600;
+  var MAX_ETAPE = 260;
+  var MAX_ETAPES_ADAPTE = 4;
+  var MAX_MATERIEL = 160;
+  var MAX_SI_BLOQUE = 400;
+  var MAX_POURQUOI = 300;
+  var MAX_IDEES_MESURE = 4;
+  var MAX_TEXTE_IDEE = 160;
 
   var NOMS_JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
   var NOMS_MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
@@ -1238,7 +1277,7 @@
   }
 
   function validerEtat(objet) {
-    var version, jours;
+    var version, jours, etat, retours, adaptation;
     if (!estObjetSimple(objet)) {
       return { ok: false, erreur: "Ce contenu n’est pas une sauvegarde de Dessin du jour." };
     }
@@ -1259,18 +1298,26 @@
     if (jours !== undefined && !estObjetSimple(jours)) {
       return { ok: false, erreur: "La liste des jours dessinés de cette sauvegarde est illisible." };
     }
-    return {
-      ok: true,
-      etat: {
-        version: 1,
-        jours: nettoyerJours(jours === undefined ? {} : jours),
-        tirage: nettoyerTirage(propre(objet, "tirage")),
-        reglages: nettoyerReglages(propre(objet, "reglages")),
-        paliersVus: nettoyerPaliersVus(propre(objet, "paliersVus")),
-        favoris: nettoyerFavoris(propre(objet, "favoris")),
-        guide: nettoyerGuide(propre(objet, "guide"))
-      }
+    etat = {
+      version: 1,
+      jours: nettoyerJours(jours === undefined ? {} : jours),
+      tirage: nettoyerTirage(propre(objet, "tirage")),
+      reglages: nettoyerReglages(propre(objet, "reglages")),
+      paliersVus: nettoyerPaliersVus(propre(objet, "paliersVus")),
+      favoris: nettoyerFavoris(propre(objet, "favoris")),
+      guide: nettoyerGuide(propre(objet, "guide"))
     };
+    /* Champs facultatifs : présents seulement s’ils ont un contenu, pour
+       qu’une progression sans eux garde exactement sa forme d’avant. */
+    retours = nettoyerRetours(propre(objet, "retours"), etat.jours);
+    if (retours !== null) {
+      etat.retours = retours;
+    }
+    adaptation = nettoyerAdaptation(propre(objet, "adaptation"));
+    if (adaptation !== null) {
+      etat.adaptation = adaptation;
+    }
+    return { ok: true, etat: etat };
   }
 
   function depuisJSON(texte) {
@@ -1321,7 +1368,8 @@
     if (estCleValide(cle) && possede(nouveau.jours, cle)) {
       delete nouveau.jours[cle];
     }
-    return nouveau;
+    /* Le retour noté sur ce jour part avec lui. */
+    return etatSur(nouveau);
   }
 
   function tirageDuJour(etat, cle) {
@@ -1342,6 +1390,8 @@
       return nouveau;
     }
     nouveau.tirage = { date: cle, n: Math.min(MAX_TIRAGES, tirageDuJour(nouveau, cle) + 1) };
+    /* Changer d’exercice abandonne la version adaptée de l’ancien. */
+    delete nouveau.adaptation;
     return nouveau;
   }
 
@@ -2292,6 +2342,352 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 9. Compléments : retours, exercice adapté, idées sur mesure, fusion */
+  /* ------------------------------------------------------------------ */
+
+  /* Tout ce qui suit sert aux fonctions « avec Claude » de l’appli publiée
+     comme artefact. Rien ici n’appelle Claude : ce sont les garde-fous par
+     lesquels passe tout texte reçu avant d’être rangé ou affiché. */
+
+  /* Texte d’une seule ligne : espaces et sauts de ligne ramenés à une espace. */
+  function uneLigne(v, max) {
+    if (typeof v !== "string") {
+      return "";
+    }
+    return rogner(rogner(v.replace(/\s+/g, " ")).slice(0, max));
+  }
+
+  /* Texte de plusieurs paragraphes : sauts de ligne gardés, trois d’affilée au plus. */
+  function plusieursLignes(v, max) {
+    if (typeof v !== "string") {
+      return "";
+    }
+    return rogner(rogner(v.replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " ")
+      .replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n")).slice(0, max));
+  }
+
+  /* etat.retours nettoyé : { cle de jour: texte }, seulement pour des jours
+     cochés ; null s’il n’y en a aucun. */
+  function nettoyerRetours(v, jours) {
+    var retours = {};
+    var cles = [];
+    var nom, i, texte;
+    if (!estObjetSimple(v) || !estObjetSimple(jours)) {
+      return null;
+    }
+    for (nom in v) {
+      if (possede(v, nom) && estCleValide(nom) && possede(jours, nom)) {
+        cles.push(nom);
+      }
+    }
+    cles.sort();
+    for (i = 0; i < cles.length; i++) {
+      texte = plusieursLignes(v[cles[i]], MAX_RETOUR);
+      if (texte !== "") {
+        retours[cles[i]] = texte;
+      }
+    }
+    for (nom in retours) {
+      if (possede(retours, nom)) {
+        return retours;
+      }
+    }
+    return null;
+  }
+
+  function retourDuJour(etat, cle) {
+    var texte;
+    if (!estObjetSimple(etat) || !estObjetSimple(etat.retours) || !estCleValide(cle)) {
+      return "";
+    }
+    texte = propre(etat.retours, cle);
+    return typeof texte === "string" ? texte : "";
+  }
+
+  /* Range (ou, avec un texte vide, retire) le retour d’un jour coché. */
+  function noterRetour(etat, cle, texte) {
+    var nouveau = etatSur(etat);
+    var retours = {};
+    var nom;
+    if (!estCleValide(cle) || !possede(nouveau.jours, cle)) {
+      return nouveau;
+    }
+    if (estObjetSimple(nouveau.retours)) {
+      for (nom in nouveau.retours) {
+        if (possede(nouveau.retours, nom)) {
+          retours[nom] = nouveau.retours[nom];
+        }
+      }
+    }
+    retours[cle] = typeof texte === "string" ? texte : "";
+    nouveau.retours = retours;
+    return etatSur(nouveau);
+  }
+
+  /* Étapes d’un exercice adapté : 2 à 4 lignes non vides. */
+  function nettoyerEtapes(v) {
+    var etapes = [];
+    var i, ligne;
+    if (!estTableau(v)) {
+      return etapes;
+    }
+    for (i = 0; i < v.length && etapes.length < MAX_ETAPES_ADAPTE; i++) {
+      ligne = uneLigne(v[i], MAX_ETAPE);
+      if (ligne !== "") {
+        etapes.push(ligne);
+      }
+    }
+    return etapes;
+  }
+
+  /* etat.adaptation nettoyé, ou null s’il est inutilisable :
+     { date, base, titre, consigne, etapes, materiel, siBloque, duree, pourquoi }. */
+  function nettoyerAdaptation(v) {
+    var date, base, titre, consigne, etapes, duree;
+    if (!estObjetSimple(v)) {
+      return null;
+    }
+    date = propre(v, "date");
+    base = propre(v, "base");
+    titre = uneLigne(propre(v, "titre"), MAX_TITRE);
+    consigne = uneLigne(propre(v, "consigne"), MAX_CONSIGNE);
+    etapes = nettoyerEtapes(propre(v, "etapes"));
+    duree = propre(v, "duree");
+    if (!estCleValide(date) || typeof base !== "string" || !RE_ID.test(PREFIXE_ADAPTE + base) ||
+        titre === "" || consigne === "" || etapes.length < 2) {
+      return null;
+    }
+    return {
+      date: date,
+      base: base,
+      titre: titre,
+      consigne: consigne,
+      etapes: etapes,
+      materiel: uneLigne(propre(v, "materiel"), MAX_MATERIEL),
+      siBloque: uneLigne(propre(v, "siBloque"), MAX_SI_BLOQUE),
+      duree: dans(DUREES, duree) ? duree : DUREES[1],
+      pourquoi: uneLigne(propre(v, "pourquoi"), MAX_POURQUOI)
+    };
+  }
+
+  /* Range la version adaptée de l’exercice « base » pour le jour « cle ».
+     proposition : ce que Claude a renvoyé (jamais cru sur parole). Si elle
+     est inutilisable, l’état revient inchangé. */
+  function poserAdaptation(etat, cle, base, proposition) {
+    var nouveau = etatSur(etat);
+    var source = estObjetSimple(proposition) ? proposition : {};
+    var adaptation = nettoyerAdaptation({
+      date: cle,
+      base: base,
+      titre: propre(source, "titre"),
+      consigne: propre(source, "consigne"),
+      etapes: propre(source, "etapes"),
+      materiel: propre(source, "materiel"),
+      siBloque: propre(source, "siBloque"),
+      duree: propre(source, "duree"),
+      pourquoi: propre(source, "pourquoi")
+    });
+    if (adaptation !== null) {
+      nouveau.adaptation = adaptation;
+    }
+    return nouveau;
+  }
+
+  function retirerAdaptation(etat) {
+    var nouveau = etatSur(etat);
+    delete nouveau.adaptation;
+    return nouveau;
+  }
+
+  /* L’exercice adapté du jour « cle », sous la forme d’un exercice ordinaire
+     (id "adapte-<base>", adapte: true), ou null. */
+  function adaptationDuJour(etat, cle) {
+    var a = estObjetSimple(etat) ? nettoyerAdaptation(etat.adaptation) : null;
+    var origine;
+    if (a === null || !estCleValide(cle) || a.date !== cle) {
+      return null;
+    }
+    origine = exerciceParId(a.base);
+    return {
+      id: PREFIXE_ADAPTE + a.base,
+      titre: a.titre,
+      consigne: a.consigne,
+      etapes: a.etapes,
+      materiel: a.materiel,
+      siBloque: a.siBloque,
+      duree: a.duree,
+      pourquoi: a.pourquoi,
+      themeCle: origine ? origine.themeCle : "",
+      themeNom: origine ? origine.themeNom : "",
+      genere: false,
+      adapte: true
+    };
+  }
+
+  /* Idées reçues de Claude : au plus 4 textes d’une ligne, sans doublon. */
+  function nettoyerIdeesSurMesure(v) {
+    var idees = [];
+    var vus = {};
+    var i, texte;
+    if (!estTableau(v)) {
+      return idees;
+    }
+    for (i = 0; i < v.length && idees.length < MAX_IDEES_MESURE; i++) {
+      texte = estObjetSimple(v[i]) ? propre(v[i], "texte") : v[i];
+      texte = uneLigne(texte, MAX_TEXTE_IDEE).replace(/^["«»\s]+|["«»\s]+$/g, "");
+      if (texte !== "" && vus["t:" + texte.toLowerCase()] !== true) {
+        vus["t:" + texte.toLowerCase()] = true;
+        idees.push(majuscule(texte));
+      }
+    }
+    return idees;
+  }
+
+  /* Le texte d’un chapitre du guide, à plat (pour le donner à lire). */
+  function texteChapitre(id) {
+    var chapitres = chapitresTries();
+    var position = positionChapitre(chapitres, id);
+    var lignes = [];
+    var c, blocs, i, j, b, type, elements;
+    if (position === -1) {
+      return "";
+    }
+    c = chapitres[position];
+    lignes.push("Chapitre " + c.numero + " : " + texteOuVide(c.titre));
+    if (texteOuVide(c.resume) !== "") {
+      lignes.push(texteOuVide(c.resume));
+    }
+    blocs = estTableau(c.blocs) ? c.blocs : [];
+    for (i = 0; i < blocs.length; i++) {
+      b = blocs[i];
+      if (!estObjetSimple(b)) {
+        continue;
+      }
+      type = texteOuVide(b.type);
+      elements = estTableau(b.elements) ? b.elements : (estTableau(b.etapes) ? b.etapes : []);
+      if (type === "titre") {
+        lignes.push("");
+        lignes.push("## " + texteOuVide(b.contenu));
+      } else if (type === "texte") {
+        lignes.push(texteOuVide(b.contenu));
+      } else if (type === "astuce" || type === "piege") {
+        lignes.push((type === "astuce" ? "Astuce : " : "Piège : ") + texteOuVide(b.contenu));
+      } else if (type === "schema") {
+        lignes.push("[Schéma : " + texteOuVide(b.legende) + "]");
+      } else if (type === "exercice") {
+        lignes.push("Exercice (" + (typeof b.duree === "number" ? b.duree : "?") + " min) : " +
+          texteOuVide(b.titre) + ". " + texteOuVide(b.consigne));
+      } else if (type === "retenir") {
+        lignes.push("À retenir :");
+      }
+      if (type === "liste" || type === "etapes" || type === "retenir" || type === "exercice") {
+        for (j = 0; j < elements.length; j++) {
+          if (texteOuVide(elements[j]) !== "") {
+            lignes.push("- " + texteOuVide(elements[j]));
+          }
+        }
+      }
+    }
+    return lignes.join("\n");
+  }
+
+  /* Ce que l’appli sait de la pratique récente, pour adapter un exercice :
+     { total, serie, recents: [ { date, titre, theme, duree, ressenti } ],
+       chapitresFaits: [ numéros ] }. Les « recents » sont les jours cochés
+     les plus proches de « cle », du plus récent au plus ancien. */
+  function contexteProgression(etat, cle, combien) {
+    var sur = etatSur(etat);
+    var max = estEntier(combien) && combien > 0 ? combien : 7;
+    var cles = clesFaites(sur.jours).sort();
+    var recents = [];
+    var numeros = [];
+    var chapitres = chapitresTries();
+    var i, fiche;
+    for (i = cles.length - 1; i >= 0 && recents.length < max; i--) {
+      if (!estCleValide(cle) || cles[i] <= cle) {
+        fiche = sur.jours[cles[i]];
+        recents.push({
+          date: cles[i],
+          titre: fiche.titre,
+          theme: fiche.themeNom,
+          duree: fiche.duree,
+          ressenti: fiche.ressenti
+        });
+      }
+    }
+    for (i = 0; i < chapitres.length; i++) {
+      if (chapitreFait(sur, chapitres[i].id)) {
+        numeros.push(chapitres[i].numero);
+      }
+    }
+    return {
+      total: totalJours(sur.jours),
+      serie: estCleValide(cle) ? calculerSerie(sur.jours, cle).serie : 0,
+      recents: recents,
+      chapitresFaits: numeros
+    };
+  }
+
+  /* Vrai si l’état ne contient encore rien (ni jour, ni favori, ni réglage changé). */
+  function estEtatVierge(etat) {
+    return versJSON(etat, false) === versJSON(etatInitial(), false);
+  }
+
+  /* Réunit deux progressions (deux appareils qui ont avancé chacun de leur
+     côté) sans rien perdre : tout jour coché, favori, exercice du guide ou
+     palier présent d’un côté est gardé. À égalité, « a » l’emporte, sauf pour
+     un même jour, où la fiche cochée le plus tard est gardée. Les réglages
+     sont ceux de « a ». */
+  function fusionnerEtats(a, b) {
+    var ea = etatSur(a);
+    var eb = etatSur(b);
+    var fusion = etatSur(ea);
+    var retours = {};
+    var nom, i, da, db;
+
+    for (nom in eb.jours) {
+      if (possede(eb.jours, nom) && (!possede(fusion.jours, nom) ||
+          eb.jours[nom].faitLe > fusion.jours[nom].faitLe)) {
+        fusion.jours[nom] = eb.jours[nom];
+      }
+    }
+    for (nom in fusion.jours) {
+      if (possede(fusion.jours, nom)) {
+        /* Le retour suit la fiche gardée ; à défaut, celui qui existe. */
+        da = retourDuJour(ea, nom);
+        db = retourDuJour(eb, nom);
+        if (possede(eb.jours, nom) && fusion.jours[nom] === eb.jours[nom]) {
+          retours[nom] = db !== "" ? db : da;
+        } else {
+          retours[nom] = da !== "" ? da : db;
+        }
+      }
+    }
+    fusion.retours = retours;
+
+    fusion.favoris = ea.favoris.concat(eb.favoris);
+    for (nom in eb.guide.faits) {
+      if (possede(eb.guide.faits, nom) && (!possede(fusion.guide.faits, nom) ||
+          eb.guide.faits[nom] < fusion.guide.faits[nom])) {
+        fusion.guide.faits[nom] = eb.guide.faits[nom];
+      }
+    }
+    fusion.paliersVus = ea.paliersVus.concat(eb.paliersVus);
+
+    da = ea.tirage.date;
+    db = eb.tirage.date;
+    if (db !== null && (da === null || db > da || (db === da && eb.tirage.n > ea.tirage.n))) {
+      fusion.tirage = eb.tirage;
+    }
+    if (eb.adaptation && (!ea.adaptation || eb.adaptation.date > ea.adaptation.date)) {
+      fusion.adaptation = eb.adaptation;
+    }
+    /* etatSur remet tout d’aplomb : doublons de favoris, tri, plafonds. */
+    i = etatSur(fusion);
+    return i;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* API publique                                                        */
   /* ------------------------------------------------------------------ */
 
@@ -2381,6 +2777,20 @@
     SCHEMA_MARGE: SCHEMA_MARGE,
     validerForme: validerForme,
     validerSchema: validerSchema,
+
+    /* compléments : retours, exercice adapté, idées sur mesure, fusion */
+    MAX_RETOUR: MAX_RETOUR,
+    PREFIXE_ADAPTE: PREFIXE_ADAPTE,
+    retourDuJour: retourDuJour,
+    noterRetour: noterRetour,
+    poserAdaptation: poserAdaptation,
+    retirerAdaptation: retirerAdaptation,
+    adaptationDuJour: adaptationDuJour,
+    nettoyerIdeesSurMesure: nettoyerIdeesSurMesure,
+    texteChapitre: texteChapitre,
+    contexteProgression: contexteProgression,
+    estEtatVierge: estEtatVierge,
+    fusionnerEtats: fusionnerEtats,
 
     /* aides internes */
     hacher: hacher,

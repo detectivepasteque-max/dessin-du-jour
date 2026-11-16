@@ -98,12 +98,14 @@
     "exercice", "exercice-surtitre", "exercice-titre", "exercice-consigne",
     "exercice-etapes", "exercice-materiel-ligne", "exercice-materiel",
     "exercice-bloque", "exercice-si-bloque", "btn-changer", "changer-restants",
+    "exercice-adapte", "exercice-adapte-texte", "btn-origine",
     "exercice-absent",
     "minuteur", "minuteur-durees", "minuteur-temps", "anneau-progres",
     "btn-demarrer", "btn-pause", "btn-reprendre", "btn-reinitialiser",
     "minuteur-message",
     "zone-fait", "fait-avant", "btn-fait", "fait-apres", "fait-etat",
     "fait-dessin", "fait-encouragement", "palier-jour", "ressenti-jour", "btn-annuler",
+    "retour", "retour-garde", "retour-texte", "retour-ia",
     "vue-idees", "titre-idees", "idees-absentes", "idees-corps",
     "idees-categories", "idees-categories-choix", "idees-categorie-description",
     "idee", "idee-titre", "idee-texte", "idee-morceaux", "idee-aide",
@@ -129,7 +131,8 @@
     "btn-effacer",
     "detail", "detail-titre", "detail-statut", "detail-exo-label",
     "detail-exo-titre", "detail-exo-theme", "detail-exo-consigne",
-    "detail-ressenti", "detail-palier", "detail-basculer", "detail-fermer",
+    "detail-ressenti", "detail-retour-bloc", "detail-retour",
+    "detail-palier", "detail-basculer", "detail-fermer",
     "detail-annonce",
     "confirmation", "confirmation-titre", "confirmation-texte",
     "confirmation-oui", "confirmation-non",
@@ -147,7 +150,8 @@
   var stockage = {
     disponible: true,               /* faux si localStorage est absent ou refuse l’écriture */
     protege: false,                 /* vrai si des données illisibles n’ont pas pu être mises de côté */
-    cleCopie: ""                    /* clé de la copie des données illisibles, s’il y en a une */
+    cleCopie: "",                   /* clé de la copie des données illisibles, s’il y en a une */
+    distant: false                  /* vrai quand la progression est aussi gardée avec le compte (claude.js) */
   };
 
   var minuteur = {
@@ -421,12 +425,28 @@
     return L.etatInitial();
   }
 
-  /* Écrit la progression. Renvoie vrai si elle est bien enregistrée. */
-  function enregistrer() {
+  /* Prévient claude.js (s’il est là) que la progression vient de changer :
+     c’est lui qui l’envoie vers le compte. Ne plante jamais. */
+  function prevenirCompte() {
+    var ia = DDJ.ia;
+    if (ia && typeof ia.surEnregistrement === "function") {
+      try {
+        ia.surEnregistrement();
+      } catch (e) { /* la sauvegarde locale ne dépend pas de l’envoi */ }
+    }
+  }
+
+  /* Écrit la progression. Renvoie vrai si elle est bien enregistrée.
+     silencieux (vrai, et rien d’autre) : la progression vient justement du
+     compte, il ne faut pas la lui renvoyer. */
+  function enregistrer(silencieux) {
     var magasin;
+    if (silencieux !== true) {
+      prevenirCompte();
+    }
     if (stockage.protege) {
       majBandeaux();
-      return false;
+      return stockage.distant;
     }
     magasin = magasinLocal();
     if (!magasin) {
@@ -440,11 +460,15 @@
       }
     }
     majBandeaux();
-    return stockage.disponible;
+    return stockage.disponible || stockage.distant;
   }
 
   function majBandeaux() {
-    if (stockage.protege) {
+    if (stockage.distant) {
+      /* La progression est gardée avec le compte : le navigateur n’est plus
+         le seul endroit où elle vit, il n’y a rien à signaler. */
+      montrer(el.bandeauStockage, false);
+    } else if (stockage.protege) {
       texte(el.bandeauStockageTexte, "Les données enregistrées dans ce navigateur sont illisibles et n’ont pas pu " +
         "être mises de côté. Pour ne pas les écraser, ta progression ne pourra pas être enregistrée pendant " +
         "cette visite. Tu peux importer une sauvegarde depuis les réglages.");
@@ -489,9 +513,10 @@
   /* Thème et navigation                                                 */
   /* ------------------------------------------------------------------ */
 
-  /* "auto" laisse la feuille de style suivre prefers-color-scheme. */
+  /* "auto" laisse la feuille de style suivre l’appareil (ou, dans un artefact,
+     le thème choisi dans Claude, que l’hôte pose dans data-theme). */
   function appliquerTheme() {
-    doc.documentElement.setAttribute("data-theme", etat.reglages.theme);
+    doc.documentElement.setAttribute("data-apparence", etat.reglages.theme);
   }
 
   /* Remet l’ancre sur le sommaire du guide sans ajouter d’étape à l’historique
@@ -558,6 +583,7 @@
       window.scrollTo(0, 0);
       focusser(titreDeVue(nom));
     }
+    apresRendu();
   }
 
   function surChangementAncre() {
@@ -582,7 +608,13 @@
      jour est fait, sinon celui du tirage en cours. null si les données manquent. */
   function exerciceCourant() {
     var fiche = ficheDuJour(cleJour);
+    var adapte = L.adaptationDuJour(etat, cleJour);
     var exercice = null;
+    /* Version adaptée par Claude : tant que le jour n’est pas coché, ou s’il
+       l’a été avec elle. */
+    if (adapte && (!fiche || fiche.exerciceId === adapte.id)) {
+      return adapte;
+    }
     if (fiche && fiche.exerciceId) {
       exercice = L.exerciceParId(fiche.exerciceId);
     }
@@ -661,8 +693,18 @@
     duree = nombre(exercice.duree);
     if (autreDessin) {
       surtitre = "L’exercice proposé aujourd’hui";
+    } else if (exercice.adapte === true) {
+      surtitre = "Ton exercice du jour, adapté";
     } else {
       surtitre = fiche ? "Ton exercice du jour" : "L’exercice du jour";
+    }
+    /* Exercice adapté : on dit pourquoi, et on laisse revenir à l’original
+       tant que le jour n’est pas coché. */
+    montrer(el.exerciceAdapte, exercice.adapte === true);
+    if (exercice.adapte === true) {
+      texte(el.exerciceAdapteTexte, chaine(exercice.pourquoi) ||
+        "Cette version tient compte de tes derniers dessins.");
+      montrer(el.btnOrigine, !fiche);
     }
     texte(el.exerciceSurtitre, surtitre + (duree > 0 ? " · " + duree + " min conseillées" : ""));
     texte(el.exerciceTitre, chaine(exercice.titre) || "Exercice sans titre");
@@ -719,6 +761,16 @@
       (origine === "idee" ? "une idée tirée au hasard." : "un exercice du guide.");
   }
 
+  /* Le retour de Claude noté sur le jour affiché, s’il y en a un. La partie
+     « demander un retour » (#retour-ia) est montrée par claude.js quand Claude
+     est joignable ; le bloc entier disparaît s’il n’a rien à montrer. */
+  function rendreRetour(fiche) {
+    var garde = fiche ? L.retourDuJour(etat, cleJour) : "";
+    texte(el.retourTexte, garde);
+    montrer(el.retourGarde, garde !== "");
+    montrer(el.retour, !!fiche && (garde !== "" || !el.retourIa.hidden));
+  }
+
   function rendreFait(fiche) {
     var dessin;
     montrer(el.faitAvant, !fiche);
@@ -731,6 +783,7 @@
       texte(el.faitEncouragement, ENCOURAGEMENTS[L.hacher(cleJour) % ENCOURAGEMENTS.length]);
       majRessenti(el.ressentiJour, fiche.ressenti);
     }
+    rendreRetour(fiche);
     /* Le message de palier ne vaut que pour le jour où il a été gagné. */
     if (!fiche || palierJourCle !== cleJour) {
       palierJourCle = null;
@@ -2696,6 +2749,8 @@
     if (fiche) {
       majRessenti(el.detailRessenti, fiche.ressenti);
     }
+    texte(el.detailRetour, fiche ? L.retourDuJour(etat, cle) : "");
+    montrer(el.detailRetourBloc, !!fiche && L.retourDuJour(etat, cle) !== "");
 
     texte(el.detailBasculer, fiche ? "Décocher ce jour" : "Marquer comme fait");
     mettreClasse(el.detailBasculer, "bouton", !fiche);
@@ -2778,6 +2833,12 @@
     var nom = "dessin-du-jour-" + L.aujourdHui() + ".json";
     var fabrique = window.URL || window.webkitURL;
     var blob, url, lien;
+    /* Dans un artefact, un lien de téléchargement ne fait rien : claude.js
+       passe par la fenêtre d’enregistrement de Claude et dit lui-même le résultat. */
+    if (DDJ.ia && typeof DDJ.ia.telecharger === "function" &&
+        DDJ.ia.telecharger(nom, L.versJSON(etat, true), messageSauvegarde) === true) {
+      return;
+    }
     try {
       blob = new Blob([L.versJSON(etat, true)], { type: "application/json" });
       url = fabrique.createObjectURL(blob);
@@ -2936,6 +2997,8 @@
     idees.recentes = [];
     idees.connues = {};
     montrer(el.bandeauIllisible, false);
+    /* La copie gardée avec le compte repart de zéro elle aussi. */
+    prevenirCompte();
     appliquerTheme();
     synchroniserDuree();
     rendreTout();
@@ -2948,7 +3011,8 @@
       titre: "Tout effacer ?",
       texte: "Ta progression (" + pluriel(total, "jour dessiné", "jours dessinés") +
         "), tes paliers, tes idées gardées en favori, ton avancement dans le guide et tes réglages " +
-        "seront supprimés de ce navigateur. C’est définitif : " +
+        "seront supprimés" + (stockage.distant ? ", ici et dans la copie gardée avec ton compte" : " de ce navigateur") +
+        ". C’est définitif : " +
         "si tu veux en garder une trace, exporte d’abord ta progression.",
       oui: "Oui, tout effacer",
       danger: true,
@@ -2970,7 +3034,96 @@
       rendreDetail();
     }
     majBandeaux();
+    apresRendu();
   }
+
+  /* Laisse claude.js mettre à jour ses propres blocs (boutons « avec Claude »,
+     état de la sauvegarde) après chaque réaffichage. */
+  function apresRendu() {
+    var ia = DDJ.ia;
+    if (ia && typeof ia.apresRendu === "function") {
+      try {
+        ia.apresRendu();
+      } catch (e) { /* l’appli marche sans ces blocs */ }
+    }
+  }
+
+  /* Retour à l’exercice du jour d’origine, à la place de sa version adaptée. */
+  function surOrigine() {
+    if (ficheDuJour(cleJour)) {
+      return;
+    }
+    etat = L.retirerAdaptation(etat);
+    enregistrer();
+    synchroniserDuree();
+    rendreTout();
+    focusser(el.exerciceTitre);
+    annoncer("Exercice d’origine rétabli.");
+  }
+
+  /* Ce que claude.js peut lire et faire dans l’appli. Tout changement de la
+     progression passe par ici, donc par logique.js. */
+  DDJ.app = {
+    etat: function () {
+      return etat;
+    },
+    cleJour: function () {
+      return cleJour;
+    },
+    vue: function () {
+      return vueActive;
+    },
+    chapitre: function () {
+      return chapitreActif;
+    },
+    fiche: function () {
+      return ficheDuJour(cleJour);
+    },
+    exercice: function () {
+      return exerciceCourant();
+    },
+    /* L’exercice du jour tel que l’appli le propose, sans adaptation. */
+    exerciceDOrigine: function () {
+      return L.exerciceDuJour(cleJour, L.tirageDuJour(etat, cleJour));
+    },
+    /* Applique « fn(etat) -> nouvel état », enregistre et réaffiche. */
+    modifier: function (fn) {
+      etat = fn(etat);
+      enregistrer();
+      synchroniserDuree();
+      rendreTout();
+    },
+    /* Remplace la progression par celle du compte, sans la lui renvoyer. */
+    adopter: function (nouvelEtat) {
+      var resultat = L.validerEtat(nouvelEtat);
+      if (!resultat.ok) {
+        return false;
+      }
+      etat = resultat.etat;
+      stockage.protege = false;
+      enregistrer(true);
+      appliquerTheme();
+      synchroniserDuree();
+      rendreTout();
+      return true;
+    },
+    /* Dit à l’appli si la progression est aussi gardée avec le compte. */
+    stockageDistant: function (actif) {
+      stockage.distant = actif === true;
+      majBandeaux();
+    },
+    /* Affiche une idée venue de Claude comme n’importe quelle autre idée. */
+    montrerIdee: function (texteIdee) {
+      var propre = chaine(texteIdee);
+      if (propre === "") {
+        return;
+      }
+      reprendreIdee({ categorieCle: "", categorieNom: "Sur mesure", texte: propre, morceaux: [] });
+      annoncer("Idée choisie : " + propre + ".");
+    },
+    annoncer: annoncer,
+    focusser: focusser
+  };
 
   /* Si la page est restée ouverte après minuit, l’écran passe au nouveau jour.
      Exception : tant qu’une séance de minuteur lancée sur le jour affiché est
@@ -3047,6 +3200,7 @@
 
     /* Aujourd’hui */
     el.btnChanger.addEventListener("click", surChanger);
+    el.btnOrigine.addEventListener("click", surOrigine);
     el.btnFait.addEventListener("click", surFait);
     el.btnAnnuler.addEventListener("click", surAnnuler);
     brancherRessenti(el.ressentiJour, function () {

@@ -4115,6 +4115,251 @@
   });
 
   /* ================================================================== */
+  groupe("Compléments : retours, exercice adapté, idées sur mesure, fusion");
+  /* ================================================================== */
+
+  function etatAvecJour(cle, faitLe, titre) {
+    return L.marquerFait(L.etatInitial(), cle, {
+      exerciceId: "lun-03", titre: titre || "Des lignes", themeNom: "Lignes", duree: 20,
+      faitLe: faitLe || (cle + "T18:00:00.000Z")
+    });
+  }
+
+  var PROPOSITION = {
+    titre: "  Des lignes\n tranquilles ",
+    consigne: "Trace des lignes lentes, sans chercher la perfection.",
+    etapes: ["5 min : dix lignes droites.", "", "10 min : dix courbes.", "5 min : relie-les."],
+    materiel: "Crayon, papier",
+    siBloque: "Ralentis et respire.",
+    duree: 20,
+    pourquoi: "Tes derniers exercices étaient notés difficiles."
+  };
+
+  test("un état sans retour ni adaptation garde exactement sa forme d’avant", function () {
+    var etat = etatAvecJour("2026-03-09");
+    pareil(Object.keys(etat).sort(), ["favoris", "guide", "jours", "paliersVus", "reglages", "tirage", "version"]);
+    pareil(Object.keys(L.validerEtat({ version: 1, retours: {}, adaptation: null }).etat).sort(),
+      ["favoris", "guide", "jours", "paliersVus", "reglages", "tirage", "version"]);
+    egal(L.retourDuJour(etat, "2026-03-09"), "");
+    egal(L.adaptationDuJour(etat, "2026-03-09"), null);
+  });
+
+  test("noterRetour range le retour d’un jour coché, sans toucher à l’état reçu", function () {
+    var etat = etatAvecJour("2026-03-09");
+    var avant = L.versJSON(etat);
+    var apres = L.noterRetour(etat, "2026-03-09", "  Ce qui marche : les traits.\r\n\r\n\r\n\r\nÀ travailler :   les ellipses.  ");
+    egal(L.versJSON(etat), avant, "l’état reçu est intact");
+    egal(L.retourDuJour(apres, "2026-03-09"), "Ce qui marche : les traits.\n\nÀ travailler : les ellipses.");
+    pareil(L.validerEtat(apres).etat, apres, "validerEtat le rend à l’identique");
+    pareil(L.depuisJSON(L.versJSON(apres)).etat, apres, "il survit à un export puis un import");
+  });
+
+  test("noterRetour refuse un jour non coché, une clé invalide, et coupe un texte trop long", function () {
+    var etat = etatAvecJour("2026-03-09");
+    var long = new Array(L.MAX_RETOUR + 200).join("a");
+    egal(L.retourDuJour(L.noterRetour(etat, "2026-03-10", "texte"), "2026-03-10"), "", "jour non coché");
+    egal(L.retourDuJour(L.noterRetour(etat, "pas-une-date", "texte"), "pas-une-date"), "");
+    egal(L.retourDuJour(L.noterRetour(etat, "2026-03-09", long), "2026-03-09").length, L.MAX_RETOUR);
+    egal(L.retourDuJour(L.noterRetour(etat, "2026-03-09", 42), "2026-03-09"), "", "pas un texte");
+  });
+
+  test("un retour vide retire le retour, et le champ disparaît avec le dernier", function () {
+    var etat = L.noterRetour(etatAvecJour("2026-03-09"), "2026-03-09", "Bien.");
+    var vide = L.noterRetour(etat, "2026-03-09", "   ");
+    egal(L.retourDuJour(vide, "2026-03-09"), "");
+    egal(Object.prototype.hasOwnProperty.call(vide, "retours"), false);
+  });
+
+  test("décocher un jour emporte son retour ; un retour orphelin n’est pas gardé", function () {
+    var etat = L.noterRetour(etatAvecJour("2026-03-09"), "2026-03-09", "Bien.");
+    var decoche = L.annulerFait(etat, "2026-03-09");
+    var r;
+    egal(Object.prototype.hasOwnProperty.call(decoche, "retours"), false);
+    r = L.validerEtat({ version: 1, jours: {}, retours: { "2026-03-09": "orphelin", "constructor": "x" } });
+    egal(r.ok, true);
+    egal(Object.prototype.hasOwnProperty.call(r.etat, "retours"), false);
+  });
+
+  test("retours abîmés dans une sauvegarde : ignorés sans casser le reste", function () {
+    var source = JSON.parse(L.versJSON(etatAvecJour("2026-03-09")));
+    var r;
+    source.retours = ["pas", "un", "objet"];
+    r = L.validerEtat(source);
+    egal(r.ok, true);
+    egal(Object.prototype.hasOwnProperty.call(r.etat, "retours"), false);
+    source.retours = { "2026-03-09": { texte: "objet" } };
+    egal(Object.prototype.hasOwnProperty.call(L.validerEtat(source).etat, "retours"), false);
+    egal(L.validerEtat(source).etat.jours["2026-03-09"].titre, "Des lignes");
+  });
+
+  test("poserAdaptation nettoie la proposition et adaptationDuJour la rend comme un exercice", function () {
+    var etat = L.poserAdaptation(L.etatInitial(), "2026-03-09", "lun-03", PROPOSITION);
+    var exo = L.adaptationDuJour(etat, "2026-03-09");
+    verifier(exo !== null, "pas d’adaptation");
+    egal(exo.id, "adapte-lun-03");
+    egal(exo.titre, "Des lignes tranquilles", "titre sur une ligne, rogné");
+    pareil(exo.etapes, ["5 min : dix lignes droites.", "10 min : dix courbes.", "5 min : relie-les."], "étapes vides retirées");
+    egal(exo.duree, 20);
+    egal(exo.adapte, true);
+    egal(exo.pourquoi, PROPOSITION.pourquoi);
+    egal(L.adaptationDuJour(etat, "2026-03-10"), null, "elle ne vaut que pour son jour");
+    pareil(L.validerEtat(etat).etat, etat, "validerEtat la rend à l’identique");
+    pareil(L.depuisJSON(L.versJSON(etat)).etat, etat);
+  });
+
+  test("poserAdaptation refuse une proposition inutilisable et laisse l’état tel quel", function () {
+    var base = L.etatInitial();
+    var mauvaises = [
+      null, "texte", [], {},
+      { titre: "", consigne: "c", etapes: ["a", "b"] },
+      { titre: "t", consigne: "", etapes: ["a", "b"] },
+      { titre: "t", consigne: "c", etapes: ["une seule"] },
+      { titre: "t", consigne: "c", etapes: "pas un tableau" },
+      { titre: 12, consigne: {}, etapes: [1, 2, 3] }
+    ];
+    var i;
+    for (i = 0; i < mauvaises.length; i++) {
+      pareil(L.poserAdaptation(base, "2026-03-09", "lun-03", mauvaises[i]), base, "proposition " + i);
+    }
+    pareil(L.poserAdaptation(base, "pas-une-date", "lun-03", PROPOSITION), base, "date invalide");
+    pareil(L.poserAdaptation(base, "2026-03-09", "id avec espace", PROPOSITION), base, "id de base invalide");
+    pareil(L.poserAdaptation(base, "2026-03-09", new Array(60).join("a"), PROPOSITION), base, "id trop long");
+  });
+
+  test("adaptation : durée hors liste ramenée à 20, textes bornés, 4 étapes au plus, champs inconnus ignorés", function () {
+    var prop = {
+      titre: new Array(400).join("t"), consigne: new Array(2000).join("c"),
+      etapes: ["a", "b", "c", "d", "e", "f"], duree: 45, onclick: "alert(1)", pourquoi: new Array(900).join("p")
+    };
+    var etat = L.poserAdaptation(L.etatInitial(), "2026-03-09", "lun-03", prop);
+    egal(etat.adaptation.duree, 20);
+    egal(etat.adaptation.titre.length, 120);
+    egal(etat.adaptation.consigne.length, 600);
+    egal(etat.adaptation.etapes.length, 4);
+    egal(etat.adaptation.pourquoi.length, 300);
+    pareil(Object.keys(etat.adaptation).sort(),
+      ["base", "consigne", "date", "duree", "etapes", "materiel", "pourquoi", "siBloque", "titre"]);
+  });
+
+  test("retirerAdaptation et changerExercice abandonnent la version adaptée", function () {
+    var etat = L.poserAdaptation(L.etatInitial(), "2026-03-09", "lun-03", PROPOSITION);
+    egal(Object.prototype.hasOwnProperty.call(L.retirerAdaptation(etat), "adaptation"), false);
+    egal(Object.prototype.hasOwnProperty.call(L.changerExercice(etat, "2026-03-09"), "adaptation"), false);
+    verifier(L.adaptationDuJour(etat, "2026-03-09") !== null, "l’état reçu est intact");
+  });
+
+  test("un jour coché avec un exercice adapté garde son id et son titre", function () {
+    var etat = L.poserAdaptation(L.etatInitial(), "2026-03-09", "lun-03", PROPOSITION);
+    var exo = L.adaptationDuJour(etat, "2026-03-09");
+    var fait = L.marquerFait(etat, "2026-03-09", { exerciceId: exo.id, titre: exo.titre, duree: exo.duree, faitLe: "2026-03-09T18:00:00.000Z" });
+    egal(fait.jours["2026-03-09"].exerciceId, "adapte-lun-03");
+    egal(L.exerciceParId("adapte-lun-03"), null, "ce n’est pas un exercice de la banque");
+    verifier(L.adaptationDuJour(fait, "2026-03-09") !== null, "l’adaptation reste lisible après la coche");
+  });
+
+  test("nettoyerIdeesSurMesure : 4 idées au plus, une ligne, sans doublon ni guillemets, majuscule initiale", function () {
+    pareil(L.nettoyerIdeesSurMesure([" un chat\nastronaute ", "« Un chat astronaute »", "une tasse", 12, null, "", { texte: "un robot" }, "a", "b"]),
+      ["Un chat astronaute", "Une tasse", "Un robot", "A"]);
+    pareil(L.nettoyerIdeesSurMesure("pas un tableau"), []);
+    pareil(L.nettoyerIdeesSurMesure(null), []);
+    egal(L.nettoyerIdeesSurMesure([new Array(500).join("x")])[0].length, 160);
+  });
+
+  test("texteChapitre met un vrai chapitre à plat, et rend vide pour un id inconnu", function () {
+    var texte = L.texteChapitre("g03");
+    var chapitre = L.chapitreParId("g03");
+    verifier(chapitre !== null, "le chapitre g03 manque");
+    verifier(texte.indexOf("Chapitre 3 : " + chapitre.titre) === 0, "le titre ouvre le texte");
+    verifier(texte.indexOf("À retenir :") !== -1, "le bloc « À retenir » y est");
+    verifier(texte.indexOf("Exercice (") !== -1, "l’exercice y est");
+    verifier(texte.indexOf("[object") === -1 && texte.indexOf("undefined") === -1, "rien d’illisible");
+    verifier(texte.length > 1500, "texte trop court : " + texte.length);
+    egal(L.texteChapitre("g99"), "");
+    egal(L.texteChapitre(null), "");
+  });
+
+  test("contexteProgression : jours récents du plus proche au plus ancien, jamais après le jour demandé", function () {
+    var etat = etatAvecJour("2026-03-09");
+    var c;
+    etat = L.marquerFait(etat, "2026-03-10", { titre: "Tasses", themeNom: "Objets", duree: 15, ressenti: "difficile", faitLe: "2026-03-10T18:00:00.000Z" });
+    etat = L.marquerFait(etat, "2026-03-12", { titre: "Futur", faitLe: "2026-03-12T18:00:00.000Z" });
+    etat = L.marquerChapitre(etat, "g02", "2026-03-10");
+    c = L.contexteProgression(etat, "2026-03-11");
+    egal(c.total, 3);
+    egal(c.recents.length, 2);
+    egal(c.recents[0].date, "2026-03-10");
+    egal(c.recents[0].ressenti, "difficile");
+    egal(c.recents[1].date, "2026-03-09");
+    pareil(c.chapitresFaits, [2]);
+    egal(L.contexteProgression(etat, "2026-03-12", 1).recents.length, 1, "nombre demandé");
+    pareil(L.contexteProgression(null, "2026-03-11").recents, [], "état illisible");
+  });
+
+  test("estEtatVierge", function () {
+    egal(L.estEtatVierge(L.etatInitial()), true);
+    egal(L.estEtatVierge(null), true, "un état illisible vaut un état neuf");
+    egal(L.estEtatVierge(etatAvecJour("2026-03-09")), false);
+    egal(L.estEtatVierge(L.modifierReglages(L.etatInitial(), { son: false })), false);
+  });
+
+  test("fusionnerEtats garde tous les jours, favoris, exercices du guide et paliers des deux côtés", function () {
+    var a = L.marquerChapitre(L.ajouterFavori(etatAvecJour("2026-03-09"), "Un chat", "2026-03-09T10:00:00.000Z"), "g01", "2026-03-09");
+    var b = L.marquerChapitre(L.ajouterFavori(etatAvecJour("2026-03-10"), "Une tasse", "2026-03-10T10:00:00.000Z"), "g02", "2026-03-10");
+    var f;
+    a = L.marquerPaliersVus(a, [1]);
+    b = L.marquerPaliersVus(b, [3]);
+    f = L.fusionnerEtats(a, b);
+    pareil(Object.keys(f.jours), ["2026-03-09", "2026-03-10"]);
+    egal(f.favoris.length, 2);
+    pareil(f.guide.faits, { g01: "2026-03-09", g02: "2026-03-10" });
+    pareil(f.paliersVus, [1, 3]);
+    pareil(L.validerEtat(f).etat, f, "le résultat est un état propre");
+  });
+
+  test("fusionnerEtats : même jour des deux côtés, la fiche cochée le plus tard gagne, avec son retour", function () {
+    var a = L.noterRetour(etatAvecJour("2026-03-09", "2026-03-09T10:00:00.000Z", "Matin"), "2026-03-09", "Retour du matin");
+    var b = L.noterRetour(etatAvecJour("2026-03-09", "2026-03-09T20:00:00.000Z", "Soir"), "2026-03-09", "Retour du soir");
+    egal(L.fusionnerEtats(a, b).jours["2026-03-09"].titre, "Soir");
+    egal(L.retourDuJour(L.fusionnerEtats(a, b), "2026-03-09"), "Retour du soir");
+    egal(L.fusionnerEtats(b, a).jours["2026-03-09"].titre, "Soir", "dans l’autre sens aussi");
+    egal(L.retourDuJour(L.fusionnerEtats(b, a), "2026-03-09"), "Retour du soir");
+  });
+
+  test("fusionnerEtats : réglages du premier, favori en double compté une fois, date la plus ancienne pour le guide", function () {
+    var a = L.modifierReglages(L.ajouterFavori(L.etatInitial(), "Un chat", "2026-03-09T10:00:00.000Z"), { theme: "sombre" });
+    var b = L.modifierReglages(L.ajouterFavori(L.etatInitial(), "Un chat", "2026-03-10T10:00:00.000Z"), { theme: "clair" });
+    var f;
+    a = L.marquerChapitre(a, "g01", "2026-03-12");
+    b = L.marquerChapitre(b, "g01", "2026-03-10");
+    f = L.fusionnerEtats(a, b);
+    egal(f.reglages.theme, "sombre");
+    egal(f.favoris.length, 1);
+    egal(f.guide.faits.g01, "2026-03-10");
+  });
+
+  test("fusionnerEtats ne modifie aucun des deux états et supporte un état illisible", function () {
+    var a = etatAvecJour("2026-03-09");
+    var b = L.noterRetour(etatAvecJour("2026-03-10"), "2026-03-10", "Bien.");
+    var ja = L.versJSON(a);
+    var jb = L.versJSON(b);
+    L.fusionnerEtats(a, b);
+    egal(L.versJSON(a), ja);
+    egal(L.versJSON(b), jb);
+    pareil(L.fusionnerEtats(a, null), a);
+    pareil(L.fusionnerEtats(undefined, b), b);
+    pareil(L.fusionnerEtats(L.etatInitial(), L.etatInitial()), L.etatInitial());
+  });
+
+  test("fusionnerEtats : tirage et adaptation les plus récents", function () {
+    var a = L.changerExercice(L.etatInitial(), "2026-03-09");
+    var b = L.poserAdaptation(L.changerExercice(L.changerExercice(L.etatInitial(), "2026-03-09"), "2026-03-09"), "2026-03-10", "lun-03", PROPOSITION);
+    var f = L.fusionnerEtats(a, b);
+    pareil(f.tirage, { date: "2026-03-09", n: 2 });
+    egal(f.adaptation.date, "2026-03-10");
+    egal(L.fusionnerEtats(b, a).adaptation.date, "2026-03-10");
+  });
+
+  /* ================================================================== */
   groupe("Intégrité des données réelles");
   /* ================================================================== */
 

@@ -6,7 +6,9 @@
 
 /* --------------------------------------------------------------------------
    1. Variables et thèmes
-   data-theme sur <html> : "auto" (suit l’appareil), "clair" ou "sombre".
+   data-apparence sur <html> : "auto" (suit l’appareil), "clair" ou "sombre" :
+   c’est le réglage de l’appli. Publiée comme artefact, la page reçoit aussi de
+   son hôte data-theme="dark" ou "light" : en « auto », c’est lui qui décide.
    -------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
@@ -40,7 +42,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="auto"] {
+  :root:not([data-theme="light"]):not([data-apparence="clair"]) {
     color-scheme: dark;
     --papier: #1e1b18;
     --papier-2: #282420;
@@ -69,7 +71,8 @@
   }
 }
 
-:root[data-theme="sombre"] {
+:root[data-apparence="sombre"],
+:root[data-theme="dark"]:not([data-apparence="clair"]) {
   color-scheme: dark;
   --papier: #1e1b18;
   --papier-2: #282420;
@@ -123,6 +126,19 @@ body {
   overflow-wrap: break-word;
 }
 
+/* Sur téléphone, dans l’appli Claude : la bande sous la barre du système
+   garde la couleur de la page, rien ne défile au travers. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 40;
+  background: var(--papier);
+}
+
 /* L’attribut hidden doit gagner sur les display: flex / grid ci-dessous. */
 [hidden] { display: none !important; }
 
@@ -132,7 +148,7 @@ h2 { font-size: 1.3rem; }
 h3 { font-size: 1.05rem; margin-top: 1.1rem; }
 p { margin: 0 0 .8rem; }
 a { color: var(--accent-texte); }
-button, input { font: inherit; color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
 svg { flex-shrink: 0; }
@@ -185,7 +201,9 @@ p.note { margin-bottom: .5rem; }
 .entete-interieur {
   max-width: 46rem;
   margin: 0 auto;
-  padding: .5rem 1rem;
+  padding-block: .5rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -219,7 +237,9 @@ p.note { margin-bottom: .5rem; }
   z-index: 30;
   display: flex;
   justify-content: space-around;
-  padding: .25rem .25rem calc(.25rem + env(safe-area-inset-bottom, 0px));
+  padding-block: .25rem calc(.25rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(.25rem, env(safe-area-inset-left, 0px));
+  padding-right: max(.25rem, env(safe-area-inset-right, 0px));
   background: var(--carte);
   border-top: 1px solid var(--ligne);
 }
@@ -262,7 +282,7 @@ p.note { margin-bottom: .5rem; }
   .nav-lien { font-size: .72rem; }
 }
 @media (max-width: 359px) {
-  .navigation { padding-left: 2px; padding-right: 2px; }
+  .navigation { padding-left: max(2px, env(safe-area-inset-left, 0px)); padding-right: max(2px, env(safe-area-inset-right, 0px)); }
   .nav-lien { padding-left: 1px; padding-right: 1px; font-size: .68rem; letter-spacing: -.01em; }
   /* Onglets très étroits : un cadre plus fin, pour ne pas mordre sur le libellé. */
   .nav-lien:focus-visible { outline-width: 2px; outline-offset: -2px; }
@@ -271,14 +291,20 @@ p.note { margin-bottom: .5rem; }
 .contenu {
   max-width: 46rem;
   margin: 0 auto;
-  padding: 1.1rem .75rem calc(6rem + env(safe-area-inset-bottom, 0px));
+  padding-block: 1.1rem calc(6rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
 @media (min-width: 720px) {
   /* Grand écran : plus de barre en bas, mais un en-tête collant en haut. */
   html { scroll-padding-top: 5rem; scroll-padding-bottom: 0; }
-  .entete { position: sticky; top: 0; z-index: 30; }
-  .entete-interieur { padding: .6rem 1.25rem; }
+  .entete { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; }
+  .entete-interieur {
+    padding-block: .6rem;
+    padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  }
   .navigation {
     position: static;
     margin-left: auto;
@@ -303,7 +329,11 @@ p.note { margin-bottom: .5rem; }
   .nav-lien:focus-visible { outline-offset: 2px; }
   /* Cinq onglets à côté du nom de l’appli : en haut, le libellé seul suffit. */
   .nav-icone { display: none; }
-  .contenu { padding: 1.75rem 1.25rem 4rem; }
+  .contenu {
+    padding-block: 1.75rem 4rem;
+    padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  }
   h1 { font-size: 2rem; }
 }
 
@@ -1189,9 +1219,10 @@ dialog:not([open]) { display: none; }
 /* Couleurs écrites en dur (mêmes valeurs que --voile) : avant Chrome 122,
    Firefox 120 et Safari 17.4, ::backdrop n’hérite pas des variables de :root. */
 .dialogue::backdrop { background: rgba(42, 34, 26, .55); }
-:root[data-theme="sombre"] .dialogue::backdrop { background: rgba(0, 0, 0, .65); }
+:root[data-apparence="sombre"] .dialogue::backdrop,
+:root[data-theme="dark"]:not([data-apparence="clair"]) .dialogue::backdrop { background: rgba(0, 0, 0, .65); }
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="auto"] .dialogue::backdrop { background: rgba(0, 0, 0, .65); }
+  :root:not([data-theme="light"]):not([data-apparence="clair"]) .dialogue::backdrop { background: rgba(0, 0, 0, .65); }
 }
 .dialogue-contenu { padding: 1.25rem; }
 .dialogue-contenu > :last-child { margin-bottom: 0; }
@@ -1216,6 +1247,112 @@ dialog:not([open]) { display: none; }
 .voile { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50; background: var(--voile); }
 
 /* --------------------------------------------------------------------------
+   10 bis. Avec Claude (artefact) : retour sur un dessin, exercice adapté,
+   idées sur mesure, question sur un chapitre, état de la sauvegarde
+   -------------------------------------------------------------------------- */
+.claude-marque {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: 0 0 .35rem;
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--vert-texte);
+}
+.claude-marque::before {
+  content: "";
+  flex: 0 0 auto;
+  width: .55rem;
+  height: .55rem;
+  border-radius: 50%;
+  background: var(--vert);
+}
+/* Un texte venu de Claude : paragraphes gardés, jamais de mise en forme. */
+.claude-texte {
+  margin: 0 0 .8rem;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.claude-texte:empty { display: none; }
+.claude-etat { margin: .6rem 0 0; color: var(--encre-2); font-size: .9rem; }
+.claude-etat:empty { display: none; }
+.claude-etat.message-erreur { color: var(--danger); font-weight: 600; }
+
+.champ-texte {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: .55rem .7rem;
+  border: 1px solid var(--ligne-forte);
+  border-radius: 10px;
+  background: var(--carte);
+  color: var(--encre);
+}
+textarea.champ-texte { min-height: 5.5rem; resize: vertical; }
+.champ-libelle { display: block; margin-bottom: .4rem; font-weight: 600; }
+.champ-ligne { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-start; }
+.champ-ligne > .champ-texte { flex: 1 1 14rem; min-width: 0; width: auto; }
+.champ-ligne + .actions, .champ-texte + .actions { margin-top: .7rem; }
+
+.exercice-adapte {
+  margin: 0 0 1rem;
+  padding: .7rem .9rem;
+  border: 1px solid var(--vert);
+  border-radius: 10px;
+  background: linear-gradient(var(--vert-doux), var(--vert-doux)), var(--carte);
+}
+.exercice-adapte p { margin: 0 0 .5rem; }
+.exercice-adapte > :last-child { margin-bottom: 0; }
+.exercice-actions .actions { margin-bottom: .5rem; }
+
+.retour {
+  margin: 1rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid var(--ligne);
+  border-radius: 10px;
+  background: var(--papier);
+  text-align: left;
+}
+.retour > :last-child { margin-bottom: 0; }
+.retour .actions { margin-bottom: .5rem; }
+.retour-garde + .retour-ia { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid var(--ligne); }
+
+.mesure-liste { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.mesure-liste:empty { display: none; }
+.mesure-idee {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: .6rem .8rem;
+  border: 1px solid var(--ligne-forte);
+  border-radius: 10px;
+  background: var(--papier);
+  color: var(--encre);
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  text-align: left;
+}
+.mesure-idee:hover { border-color: var(--accent); }
+
+.question { margin-top: 1.5rem; }
+.question-reponse { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--ligne); }
+
+.sync-etat { display: flex; align-items: baseline; gap: .5rem; font-weight: 600; }
+.sync-etat::before {
+  content: "";
+  flex: 0 0 auto;
+  width: .6rem;
+  height: .6rem;
+  border-radius: 50%;
+  background: var(--ligne-forte);
+}
+.sync-etat[data-etat="ok"]::before { background: var(--vert); }
+.sync-etat[data-etat="attente"]::before { background: var(--ocre); }
+.sync-etat[data-etat="erreur"]::before { background: var(--danger); }
+
+/* --------------------------------------------------------------------------
    11. Mouvement réduit
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
@@ -1236,7 +1373,8 @@ dialog:not([open]) { display: none; }
    thème sont répétés pour passer après les blocs sombres du début.
    -------------------------------------------------------------------------- */
 @media print {
-  :root, :root[data-theme="auto"], :root[data-theme="sombre"] {
+  /* :root répété : même poids que les sélecteurs des blocs sombres. */
+  :root, :root:root:root {
     color-scheme: light;
     --papier: #ffffff;
     --papier-2: #f2efe8;
